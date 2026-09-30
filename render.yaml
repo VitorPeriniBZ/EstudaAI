@@ -1,0 +1,26 @@
+# Blueprint do Render — serviço web grátis. O banco fica no Neon (neon.tech),
+# que tem plano grátis sem expiração: cole a connection string do Neon em DATABASE_URL.
+# Render → New → Blueprint → escolha este repositório.
+services:
+  - type: web
+    name: estudaai
+    runtime: node
+    plan: free
+    buildCommand: npm install && npm run build
+    startCommand: npm start
+    healthCheckPath: /api/health
+    envVars:
+      - key: NODE_VERSION
+        value: "22"
+      - key: DATABASE_URL        # connection string do Neon (com ?sslmode=require)
+        sync: false
+      - key: APP_SECRET
+        generateValue: true
+      - key: GOOGLE_CLIENT_ID
+        sync: false
+      - key: GOOGLE_CLIENT_SECRET
+        sync: false
+      - key: ANTHROPIC_API_KEY   # opcional
+        sync: false
+      - key: ADMIN_EMAILS        # opcional
+        sync: false
