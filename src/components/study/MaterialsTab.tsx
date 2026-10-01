@@ -1,4 +1,5 @@
 import { useRef, useState } from "react";
+import { usePlan } from "@/hooks/usePlan";
 import {
   FileText,
   Image as ImageIcon,
@@ -43,6 +44,7 @@ function toBase64(file: File): Promise<string> {
 
 export default function MaterialsTab({ subjectId }: { subjectId: number }) {
   const utils = trpc.useUtils();
+  const plan = usePlan();
   const fileInput = useRef<HTMLInputElement>(null);
   const [dragging, setDragging] = useState(false);
   const [uploading, setUploading] = useState<string[]>([]);
@@ -146,6 +148,15 @@ export default function MaterialsTab({ subjectId }: { subjectId: number }) {
         <p className="text-sm text-muted-foreground">
           Slides, páginas do livro, fotos da lousa ou do caderno — até 15 MB cada
         </p>
+        {!plan.isPro && plan.data && (
+          <p
+            className={`mt-2 text-xs ${plan.filesLeft === 0 ? "text-destructive font-semibold" : "text-muted-foreground"}`}
+          >
+            {plan.filesLeft === 0
+              ? `Você atingiu o limite de ${plan.data.limits.maxFiles} arquivos do plano Gratuito. Exclua um arquivo ou assine o PRO — anotações digitadas continuam liberadas.`
+              : `Plano Gratuito: ${plan.data.usage.files} de ${plan.data.limits.maxFiles} arquivos usados (anotações não contam).`}
+          </p>
+        )}
         <div className="mt-4 flex justify-center gap-2 flex-wrap">
           <Button variant="outline" onClick={() => fileInput.current?.click()}>
             Escolher arquivos

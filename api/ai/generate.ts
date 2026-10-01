@@ -79,11 +79,13 @@ export function buildContext(materialsText: string[]): string {
 
 const quizSchema = z.object({
   title: z.string().describe("Título curto do quiz"),
+  topics: z
+    .array(z.string())
+    .optional()
+    .describe("Lista dos temas amplos do quiz (cada questão usa exatamente um deles)"),
   questions: z.array(
     z.object({
-      topic: z
-        .string()
-        .describe("Tema/tópico da questão (ex.: nome do capítulo)"),
+      topic: z.string().describe("Um dos temas da lista `topics`, escrito igual"),
       question: z.string(),
       options: z.array(z.string()).length(4),
       answerIndex: z.number().int().min(0).max(3),
@@ -94,7 +96,104 @@ const quizSchema = z.object({
   ),
 });
 
-export type GeneratedQuiz = z.infer<typeof quizSchema>;
+export type GeneratedQuiz = { title: string; questions: z.infer<typeof quizSchema>["questions"] };
+
+/** Quantos temas pedir: poucos e amplos, com várias questões cada. */
+export function topicTarget(count: number): number {
+  return Math.max(2, Math.min(8, Math.round(count / 4)));
+}
+
+/**
+ * PROMPT PADRÃO DO QUIZ — mude aqui para alterar o estilo de todos os quizzes.
+ * Mantém sempre o mesmo formato: temas amplos, 4 alternativas, uma correta,
+ * explicação curta citando o material.
+ */
+export function quizPrompt(subjectName: string, count: number, material: string): string {
+  const nTopics = topicTarget(count);
+  return [
+    `Você é um professor universitário elaborando um quiz de múltipla escolha da matéria "${subjectName}".`,
+    `Use EXCLUSIVAMENTE o material abaixo. Crie exatamente ${count} questões em português do Brasil.`,
+    ``,
+    `TEMAS`,
+    `- Antes das questões, defina ${nTopics} temas AMPLOS no campo "topics" (ex.: o nome de um capítulo, de um parasita, de um sistema ou de um grande conceito).`,
+    `- Tema NUNCA é a pergunta nem um detalhe dela: "Ascaris lumbricoides" é tema; "Habitat do Ascaris" não é.`,
+    `- Cada questão usa no campo "topic" exatamente um nome da lista "topics", escrito igual.`,
+    `- Distribua as questões de forma equilibrada: cada tema com pelo menos ${Math.max(2, Math.floor(count / nTopics) - 1)} questões.`,
+    ``,
+    `FORMATO DE CADA QUESTÃO`,
+    `- "question": enunciado claro e completo, em uma ou duas frases, sem numeração ("1.", "Questão 1") e sem as alternativas no texto.`,
+    `- "options": exatamente 4 alternativas, sem letras ou números na frente ("A)", "a.", "1-"), com tamanho e estilo parecidos.`,
+    `- Apenas UMA alternativa correta; "answerIndex" (0 a 3) indica qual. Varie a posição da correta entre as questões.`,
+    `- Distratores plausíveis e do mesmo assunto. Proibido: "todas as anteriores", "nenhuma das anteriores", pegadinhas de redação, duplas negações.`,
+    `- "explanation": 1 a 3 frases dizendo por que a correta está certa, citando o conceito do material.`,
+    `- Misture níveis: definições, mecanismos/ciclos, comparações e aplicação prática. Não repita a mesma pergunta com outras palavras.`,
+    `- Não invente fatos que não estejam no material.`,
+    ``,
+    `MATERIAL:`,
+    material,
+  ].join("\n");
+}
+
+const LETTER_PREFIX = /^\s*(\(?[a-dA-D1-4]\)|[a-dA-D1-4][.)\-:–]|alternativa\s+[a-d][:.)-]?)\s+/;
+const NUMBER_PREFIX = /^\s*(quest[aã]o\s*\d+\s*[:.)-]?|\d+\s*[.)-])\s*/i;
+
+function norm(s: string): string {
+  return s.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/\s+/g, " ").trim();
+}
+
+/**
+ * Normaliza o quiz que veio da IA para sempre ter o mesmo padrão:
+ * - remove "A)", "1." etc. de alternativas e enunciados;
+ * - descarta questões com alternativas repetidas;
+ * - prende cada questão a um tema da lista e funde temas com 1 questão só.
+ */
+export function normalizeQuiz(raw: z.infer<typeof quizSchema>, count: number): GeneratedQuiz {
+  const qs = raw.questions
+    .map((q) => ({
+      topic: (q.topic || "").trim(),
+      question: q.question.replace(NUMBER_PREFIX, "").trim(),
+      options: q.options.map((o) => o.replace(LETTER_PREFIX, "").trim()),
+      answerIndex: q.answerIndex,
+      explanation: q.explanation.trim(),
+    }))
+    .filter((q) => q.question && q.options.every(Boolean) && new Set(q.options.map(norm)).size === 4);
+
+  const OTHER = "Outros temas";
+  const declared = (raw.topics ?? []).map((t) => t.trim()).filter(Boolean);
+  let topics: string[];
+  if (declared.length) {
+    topics = declared;
+  } else {
+    // IA não declarou temas: fica com os mais frequentes, no máximo o alvo
+    const freq = new Map<string, number>();
+    for (const q of qs) if (q.topic) freq.set(q.topic, (freq.get(q.topic) ?? 0) + 1);
+    topics = [...freq.entries()].sort((a, b) => b[1] - a[1]).slice(0, topicTarget(count)).map(([t]) => t);
+  }
+  topics = [...new Map(topics.map((t) => [norm(t), t])).values()];
+
+  const match = (t: string): string => {
+    const nt = norm(t);
+    if (!nt) return OTHER;
+    const exact = topics.find((x) => norm(x) === nt);
+    if (exact) return exact;
+    const partial = topics.find((x) => nt.includes(norm(x)) || norm(x).includes(nt));
+    if (partial) return partial;
+    // maior sobreposição de palavras significativas
+    const words = new Set(nt.split(/[^a-z0-9]+/).filter((w) => w.length > 3));
+    let best: string | null = null, score = 0;
+    for (const x of topics) {
+      const sc = norm(x).split(/[^a-z0-9]+/).filter((w) => words.has(w)).length;
+      if (sc > score) { best = x; score = sc; }
+    }
+    return best ?? OTHER;
+  };
+  for (const q of qs) q.topic = match(q.topic);
+
+  return {
+    title: raw.title?.trim() || "Quiz",
+    questions: qs.slice(0, count).map((q) => ({ ...q, topic: q.topic.slice(0, 160) })),
+  };
+}
 
 export async function generateQuizFromContext(
   context: string,
@@ -106,18 +205,16 @@ export async function generateQuizFromContext(
       maxRetries: AI_RETRIES,
       model,
       schema: quizSchema,
-      prompt:
-        `Você é um professor universitário criando um quiz de múltipla escolha sobre a matéria "${subjectName}".\n` +
-        `Com base EXCLUSIVA no material abaixo, crie exatamente ${count} questões em português.\n` +
-        `Regras:\n` +
-        `- Cada questão tem 4 alternativas e apenas UMA correta (answerIndex 0-3).\n` +
-        `- Varie os temas (campo "topic") cobrindo os principais assuntos do material.\n` +
-        `- Distratores plausíveis, sem pegadinhas de redação.\n` +
-        `- A explicação deve citar o conceito do material que justifica a resposta.\n` +
-        `- Não invente fatos fora do material.\n\n` +
-        `MATERIAL:\n${fit(context, contextFactor)}`,
+      system:
+        "Você gera quizzes educacionais em JSON seguindo rigorosamente o formato pedido. " +
+        "Responda somente com o objeto JSON do esquema.",
+      prompt: quizPrompt(subjectName, count, fit(context, contextFactor)),
     });
-    return object;
+    const quiz = normalizeQuiz(object, count);
+    if (quiz.questions.length < Math.min(count, 3)) {
+      throw Object.assign(new Error("A IA devolveu questões fora do padrão"), { name: "AI_NoObjectGeneratedError" });
+    }
+    return quiz;
   });
 }
 

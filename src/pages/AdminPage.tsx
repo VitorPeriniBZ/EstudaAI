@@ -1,4 +1,5 @@
 import { useState } from "react";
+import AdminUsers from "@/components/admin/AdminUsers";
 import NotFound from "./NotFound";
 import {
   ShieldCheck,
@@ -101,6 +102,7 @@ export default function AdminPage() {
   const [testing, setTesting] = useState<number | null>(null);
 
   const isAdmin = user?.role === "admin";
+  const [adminTab, setAdminTab] = useState<"providers" | "users">("providers");
   const { data: providers, isLoading } = trpc.admin.listProviders.useQuery(undefined, {
     enabled: isAdmin,
   });
@@ -191,6 +193,29 @@ export default function AdminPage() {
     <div className="min-h-screen">
       <AppHeader />
       <main className="mx-auto max-w-3xl px-4 py-8">
+        <div className="mb-6 inline-flex rounded-full border p-1" role="tablist" aria-label="Seções do admin">
+          {(["providers", "users"] as const).map((t) => (
+            <button
+              key={t}
+              role="tab"
+              aria-selected={adminTab === t}
+              onClick={() => setAdminTab(t)}
+              className={`rounded-full px-4 py-1.5 text-sm font-semibold transition-colors ${
+                adminTab === t ? "bg-foreground text-background" : "text-muted-foreground hover:text-foreground"
+              }`}
+            >
+              {t === "providers" ? "Provedores de IA" : "Usuários"}
+            </button>
+          ))}
+        </div>
+        {adminTab === "users" ? (
+          <>
+            <h1 className="font-display font-extrabold text-3xl tracking-tight">Usuários</h1>
+            <p className="text-muted-foreground mt-1">Veja quem usa o EstudaAí e altere plano e permissão.</p>
+            <AdminUsers />
+          </>
+        ) : (
+        <>
         <div className="flex items-end justify-between gap-4 flex-wrap">
           <div>
             <h1 className="font-display font-extrabold text-3xl tracking-tight flex items-center gap-2">
@@ -313,6 +338,8 @@ export default function AdminPage() {
               ANTHROPIC_API_KEY no servidor cadastra a Anthropic sozinho.
             </p>
           </div>
+        )}
+        </>
         )}
       </main>
 

@@ -1,9 +1,10 @@
 import { z } from "zod";
 import { TRPCError } from "@trpc/server";
-import { asc, eq } from "drizzle-orm";
+import { asc, count, desc, eq, gte, inArray } from "drizzle-orm";
 import { createRouter, adminQuery } from "./middleware";
 import { getDb } from "./queries/connection";
-import { aiProviders } from "../db/schema";
+import { aiProviders, materials, subjects, usageEvents, users } from "../db/schema";
+import { monthStart } from "./lib/plans";
 import { testProvider } from "./ai/providers";
 
 function maskKey(key: string | null): string | null {
@@ -37,6 +38,71 @@ const providerUpdateInput = z.object({
 });
 
 export const adminRouter = createRouter({
+  /* ---------------- Usuários ---------------- */
+
+  listUsers: adminQuery.query(async () => {
+    const db = getDb();
+    const since = monthStart();
+    const rows = await db.select().from(users).orderBy(desc(users.lastSignInAt));
+    const files = await db
+      .select({ userId: materials.userId, n: count() })
+      .from(materials)
+      .where(inArray(materials.kind, ["pdf", "image"]))
+      .groupBy(materials.userId);
+    const gens = await db
+      .select({ userId: usageEvents.userId, n: count() })
+      .from(usageEvents)
+      .where(gte(usageEvents.createdAt, since))
+      .groupBy(usageEvents.userId);
+    const subj = await db
+      .select({ userId: subjects.userId, n: count() })
+      .from(subjects)
+      .groupBy(subjects.userId);
+    const by = (list: { userId: number; n: number }[]) =>
+      new Map(list.map((r) => [r.userId, Number(r.n)]));
+    const f = by(files), g = by(gens), sj = by(subj);
+    return rows.map((u) => ({
+      id: u.id,
+      name: u.name,
+      email: u.email,
+      avatar: u.avatar,
+      role: u.role,
+      plan: u.plan,
+      createdAt: u.createdAt,
+      lastSignInAt: u.lastSignInAt,
+      files: f.get(u.id) ?? 0,
+      generationsThisMonth: g.get(u.id) ?? 0,
+      subjects: sj.get(u.id) ?? 0,
+    }));
+  }),
+
+  updateUser: adminQuery
+    .input(
+      z.object({
+        id: z.number(),
+        role: z.enum(["user", "admin"]).optional(),
+        plan: z.enum(["free", "pro"]).optional(),
+      }),
+    )
+    .mutation(async ({ ctx, input }) => {
+      if (input.id === ctx.user.id && input.role === "user") {
+        throw new TRPCError({
+          code: "BAD_REQUEST",
+          message: "Você não pode remover o seu próprio acesso de admin.",
+        });
+      }
+      const patch = {
+        ...(input.role ? { role: input.role } : {}),
+        ...(input.plan ? { plan: input.plan } : {}),
+      };
+      if (!Object.keys(patch).length) return { ok: true };
+      const [row] = await getDb().update(users).set(patch).where(eq(users.id, input.id)).returning({ id: users.id });
+      if (!row) throw new TRPCError({ code: "NOT_FOUND", message: "Usuário não encontrado" });
+      return { ok: true };
+    }),
+
+  /* ---------------- Provedores de IA ---------------- */
+
   listProviders: adminQuery.query(async () => {
     const rows = await getDb().query.aiProviders.findMany({
       orderBy: asc(aiProviders.priority),

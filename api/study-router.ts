@@ -3,6 +3,8 @@ import { z } from "zod";
 import { TRPCError } from "@trpc/server";
 import { and, desc, eq, inArray } from "drizzle-orm";
 import { createRouter, authedQuery } from "./middleware";
+import { assertQuizSize, withGeneration } from "./lib/plans";
+import { MAX_QUIZ_QUESTIONS } from "@contracts/plans";
 import { getDb } from "./queries/connection";
 import {
   subjects,
@@ -55,7 +57,9 @@ export const studyRouter = createRouter({
     .mutation(async ({ ctx, input }) => {
       const subject = await requireSubject(input.subjectId, ctx.user.id);
       const context = await subjectContext(input.subjectId);
-      const summary = await generateSummaryFromContext(context, subject.name);
+      const summary = await withGeneration(ctx.user, "summary", () =>
+        generateSummaryFromContext(context, subject.name),
+      );
       await getDb()
         .update(subjects)
         .set({ summary, summaryAt: new Date() })
@@ -69,16 +73,15 @@ export const studyRouter = createRouter({
     .input(
       z.object({
         subjectId: z.number(),
-        count: z.number().int().min(5).max(25).default(10),
+        count: z.number().int().min(5).max(MAX_QUIZ_QUESTIONS).default(10),
       }),
     )
     .mutation(async ({ ctx, input }) => {
       const subject = await requireSubject(input.subjectId, ctx.user.id);
+      assertQuizSize(ctx.user, input.count);
       const context = await subjectContext(input.subjectId);
-      const generated = await generateQuizFromContext(
-        context,
-        subject.name,
-        input.count,
+      const generated = await withGeneration(ctx.user, "quiz", () =>
+        generateQuizFromContext(context, subject.name, input.count),
       );
       const db = getDb();
       const [{ id: quizId }] = await db
@@ -245,10 +248,8 @@ export const studyRouter = createRouter({
     .mutation(async ({ ctx, input }) => {
       const subject = await requireSubject(input.subjectId, ctx.user.id);
       const context = await subjectContext(input.subjectId);
-      const cards = await generateFlashcardsFromContext(
-        context,
-        subject.name,
-        input.count,
+      const cards = await withGeneration(ctx.user, "flashcards", () =>
+        generateFlashcardsFromContext(context, subject.name, input.count),
       );
       const db = getDb();
       if (input.replace) {

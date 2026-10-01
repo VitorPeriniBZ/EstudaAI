@@ -1,13 +1,20 @@
 import { createTRPCReact } from "@trpc/react-query";
 import { httpBatchLink } from "@trpc/client";
-import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { MutationCache, QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import superjson from "superjson";
 import type { AppRouter } from "../../api/router";
 import type { ReactNode } from "react";
 
 export const trpc = createTRPCReact<AppRouter>();
 
-const queryClient = new QueryClient();
+// qualquer mutação (upload, geração, exclusão) pode mudar o uso do plano
+const queryClient: QueryClient = new QueryClient({
+  mutationCache: new MutationCache({
+    onSettled: () => {
+      queryClient.invalidateQueries({ queryKey: [["account", "usage"]] });
+    },
+  }),
+});
 const trpcClient = trpc.createClient({
   links: [
     httpBatchLink({

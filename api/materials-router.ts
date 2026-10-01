@@ -6,6 +6,7 @@ import { getDb } from "./queries/connection";
 import { materials } from "../db/schema";
 import { storage, MAX_FILE_BYTES } from "./lib/storage";
 import { messageFor, UserMessages } from "./lib/user-errors";
+import { withUploadSlot } from "./lib/plans";
 import { extractPdfText, extractImageText } from "./ai/generate";
 import { requireSubject } from "./subjects-router";
 
@@ -80,29 +81,33 @@ export const materialsRouter = createRouter({
       }
 
       const kind = isPdf ? "pdf" : "image";
-      const saved = await storage.uploadFile({
-        userId: ctx.user.id,
-        fileContent: bytes,
-        fileName: input.name,
-        contentType: input.contentType || (isPdf ? "application/pdf" : "image/jpeg"),
-      });
-
-      const [{ id }] = await getDb()
-        .insert(materials)
-        .values({
-          subjectId: input.subjectId,
+      // confere o limite e grava o arquivo sob trava (evita estourar com envios simultâneos)
+      const { id, fileKey } = await withUploadSlot(ctx.user, async () => {
+        const saved = await storage.uploadFile({
           userId: ctx.user.id,
-          kind,
-          title: input.name,
-          fileKey: saved.key,
-          fileSize: saved.size,
-          status: "processing",
-        })
-        .returning({ id: materials.id });
+          fileContent: bytes,
+          fileName: input.name,
+          contentType: input.contentType || (isPdf ? "application/pdf" : "image/jpeg"),
+        });
+
+        const [{ id }] = await getDb()
+          .insert(materials)
+          .values({
+            subjectId: input.subjectId,
+            userId: ctx.user.id,
+            kind,
+            title: input.name,
+            fileKey: saved.key,
+            fileSize: saved.size,
+            status: "processing",
+          })
+          .returning({ id: materials.id });
+        return { id, fileKey: saved.key };
+      });
 
       // Extração inline (rápida para imagens; PDFs de texto também são rápidos)
       try {
-        const text = await extractTextFor(kind, saved.key, input.contentType);
+        const text = await extractTextFor(kind, fileKey, input.contentType);
         await getDb()
           .update(materials)
           .set({ textContent: text, status: "ready", statusMsg: null })

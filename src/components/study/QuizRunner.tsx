@@ -4,6 +4,7 @@ import { Button } from "@/components/ui/button";
 import { trpc } from "@/providers/trpc";
 import { toast } from "sonner";
 import type { Question } from "@/lib/types";
+import Celebration, { celebrate, celebratePerfect } from "@/components/study/Celebration";
 
 type RunItem = {
   q: Question;
@@ -22,7 +23,7 @@ function shuffle<T>(arr: T[]): T[] {
   return a;
 }
 
-export default function QuizRunner({
+function QuizRunnerInner({
   quizId,
   questions,
   onExit,
@@ -44,6 +45,7 @@ export default function QuizRunner({
   const [items, setItems] = useState<RunItem[]>([]);
   const [pos, setPos] = useState(0);
   const [hits, setHits] = useState(0);
+  const [streak, setStreak] = useState(0);
 
   const submit = trpc.study.submitAttempt.useMutation({
     onError: (e) => toast.error(e.message),
@@ -60,21 +62,35 @@ export default function QuizRunner({
     setItems(run);
     setPos(0);
     setHits(0);
+    setStreak(0);
     setPhase("run");
     window.scrollTo({ top: 0 });
   }
 
-  function answer(k: number) {
+  function answer(k: number, el?: HTMLElement) {
     const it = items[pos];
     if (it.chosen !== null) return;
     const next = items.slice();
     next[pos] = { ...it, chosen: k };
     setItems(next);
-    if (k === it.correct) setHits((h) => h + 1);
+    if (k === it.correct) {
+      setHits((h) => h + 1);
+      const s = streak + 1;
+      setStreak(s);
+      const r = el?.getBoundingClientRect();
+      celebrate(r ? r.left + r.width / 2 : window.innerWidth / 2, r ? r.top + r.height / 2 : window.innerHeight / 2, s);
+    } else {
+      setStreak(0);
+    }
   }
 
   function finish(runItems = items) {
     const answered = runItems.filter((x) => x.chosen !== null);
+    const allRight =
+      answered.length > 0 &&
+      answered.length === runItems.length &&
+      answered.every((x) => x.chosen === x.correct);
+    if (allRight) setTimeout(() => celebratePerfect(), 150);
     if (answered.length > 0) {
       const answers: Record<string, number> = {};
       for (const it of answered) {
@@ -222,6 +238,9 @@ export default function QuizRunner({
         <span>
           Questão {pos + 1} de {items.length}
         </span>
+        {streak >= 2 && (
+          <span className="font-semibold text-amber-600 dark:text-amber-400">🔥 {streak} seguidas</span>
+        )}
         <span>
           {hits} acerto{hits === 1 ? "" : "s"}
         </span>
@@ -243,7 +262,7 @@ export default function QuizRunner({
                 key={k}
                 className={`opt-btn ${cls}`}
                 disabled={it.chosen !== null}
-                onClick={() => answer(k)}
+                onClick={(e) => answer(k, e.currentTarget)}
               >
                 <span className="opt-key">{"ABCD"[k]}</span>
                 <span>{q.options[oi]}</span>
@@ -285,5 +304,15 @@ export default function QuizRunner({
         </Button>
       </div>
     </div>
+  );
+}
+
+/** Camada de fogos única, acima de todas as telas do quiz. */
+export default function QuizRunner(props: Parameters<typeof QuizRunnerInner>[0]) {
+  return (
+    <>
+      <Celebration />
+      <QuizRunnerInner {...props} />
+    </>
   );
 }

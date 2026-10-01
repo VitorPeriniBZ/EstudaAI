@@ -1,5 +1,8 @@
 import { useState } from "react";
-import { HelpCircle, Sparkles, Play, Trash2, History } from "lucide-react";
+import { HelpCircle, Sparkles, Play, Trash2, History, Lock, Crown } from "lucide-react";
+import { MAX_QUIZ_QUESTIONS } from "@contracts/plans";
+import { usePlan } from "@/hooks/usePlan";
+import ProDialog from "@/components/plan/ProDialog";
 import { trpc } from "@/providers/trpc";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -28,6 +31,10 @@ export default function QuizTab({ subjectId }: { subjectId: number }) {
   const utils = trpc.useUtils();
   const [genOpen, setGenOpen] = useState(false);
   const [count, setCount] = useState(10);
+  const plan = usePlan();
+  const maxForPlan = plan.data?.limits.maxQuizQuestions ?? 25;
+  const [proHint, setProHint] = useState(false);
+  const [proOpen, setProOpen] = useState(false);
   const [activeQuiz, setActiveQuiz] = useState<number | null>(null);
   const [toDelete, setToDelete] = useState<number | null>(null);
 
@@ -173,11 +180,51 @@ export default function QuizTab({ subjectId }: { subjectId: number }) {
             <Slider
               className="mt-4"
               min={5}
-              max={25}
+              max={MAX_QUIZ_QUESTIONS}
               step={5}
               value={[count]}
-              onValueChange={([v]) => setCount(v)}
+              onValueChange={([v]) => {
+                if (v > maxForPlan) {
+                  setCount(maxForPlan);
+                  setProHint(true);
+                } else {
+                  setCount(v);
+                }
+              }}
             />
+            {!plan.isPro && (
+              <div className="relative mt-1 h-5 text-[11px] text-muted-foreground">
+                <span className="absolute left-0">5</span>
+                <span
+                  className="absolute -translate-x-1/2"
+                  style={{ left: `${((maxForPlan - 5) / (MAX_QUIZ_QUESTIONS - 5)) * 100}%` }}
+                >
+                  {maxForPlan}
+                </span>
+                <span className="absolute right-0 inline-flex items-center gap-1 text-amber-600 dark:text-amber-400 font-semibold">
+                  <Lock className="h-3 w-3" /> {MAX_QUIZ_QUESTIONS} PRO
+                </span>
+              </div>
+            )}
+            {!plan.isPro && (
+              <button
+                type="button"
+                onClick={() => setProOpen(true)}
+                className={`mt-3 w-full rounded-md border px-3 py-2 text-left text-xs transition-colors ${
+                  proHint ? "border-amber-500/60 bg-amber-500/10" : "bg-muted/40"
+                }`}
+              >
+                <span className="inline-flex items-center gap-1.5 font-semibold text-amber-700 dark:text-amber-300">
+                  <Crown className="h-3.5 w-3.5" /> Até {MAX_QUIZ_QUESTIONS} questões por quiz com o PRO
+                </span>
+                <span className="block text-muted-foreground mt-0.5">
+                  No plano Gratuito: até {maxForPlan} questões
+                  {plan.generationsLeft !== null &&
+                    ` · restam ${plan.generationsLeft} de ${plan.data?.limits.maxGenerationsPerMonth} gerações este mês`}
+                  .
+                </span>
+              </button>
+            )}
             <p className="text-xs text-muted-foreground mt-3">
               A IA usa todos os materiais prontos da matéria. Quanto mais material,
               melhores as questões.
@@ -186,13 +233,18 @@ export default function QuizTab({ subjectId }: { subjectId: number }) {
           <DialogFooter>
             <Button
               onClick={() => generate.mutate({ subjectId, count })}
-              disabled={generate.isPending}
+              disabled={generate.isPending || plan.generationsLeft === 0}
             >
-              {generate.isPending ? "Gerando…" : "Gerar quiz"}
+              {generate.isPending
+                ? "Gerando…"
+                : plan.generationsLeft === 0
+                  ? "Limite do mês atingido"
+                  : "Gerar quiz"}
             </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
+      <ProDialog open={proOpen} onOpenChange={setProOpen} />
 
       <AlertDialog open={toDelete !== null} onOpenChange={() => setToDelete(null)}>
         <AlertDialogContent>

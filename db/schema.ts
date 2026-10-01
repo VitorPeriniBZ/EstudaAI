@@ -20,6 +20,7 @@ const bytea = customType<{ data: Buffer; driverData: Buffer }>({
 });
 
 export const userRole = pgEnum("user_role", ["user", "admin"]);
+export const userPlan = pgEnum("user_plan", ["free", "pro"]);
 export const materialKind = pgEnum("material_kind", ["pdf", "image", "note"]);
 export const materialStatus = pgEnum("material_status", ["processing", "ready", "error"]);
 export const chatRole = pgEnum("chat_role", ["user", "assistant"]);
@@ -33,6 +34,8 @@ export const users = pgTable("users", {
   email: varchar("email", { length: 320 }),
   avatar: text("avatar"),
   role: userRole("role").default("user").notNull(),
+  /** plano de assinatura (admin sempre tem acesso completo) */
+  plan: userPlan("plan").default("free").notNull(),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
   updatedAt: timestamp("updatedAt")
     .defaultNow()
@@ -43,6 +46,22 @@ export const users = pgTable("users", {
 
 export type User = typeof users.$inferSelect;
 export type InsertUser = typeof users.$inferInsert;
+
+/**
+ * Uso de IA por usuário (uma linha por geração bem-sucedida).
+ * Serve para os limites mensais do plano e para o painel admin.
+ */
+export const usageEvents = pgTable(
+  "usage_events",
+  {
+    id: serial("id").primaryKey(),
+    userId: integer("userId").notNull(),
+    /** "quiz" | "summary" | "flashcards" */
+    kind: varchar("kind", { length: 32 }).notNull(),
+    createdAt: timestamp("createdAt").defaultNow().notNull(),
+  },
+  (t) => [index("usage_user_created_idx").on(t.userId, t.createdAt)],
+);
 
 // ---------- EstudaAí ----------
 

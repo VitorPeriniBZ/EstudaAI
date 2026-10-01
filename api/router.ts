@@ -4,6 +4,7 @@ import { subjectsRouter } from "./subjects-router";
 import { materialsRouter } from "./materials-router";
 import { studyRouter } from "./study-router";
 import { adminRouter } from "./admin-router";
+import { accountRouter } from "./account-router";
 
 export const appRouter = createRouter({
   ping: publicQuery.query(() => ({ ok: true, ts: Date.now() })),
@@ -12,6 +13,7 @@ export const appRouter = createRouter({
   materials: materialsRouter,
   study: studyRouter,
   admin: adminRouter,
+  account: accountRouter,
 });
 
 export type AppRouter = typeof appRouter;

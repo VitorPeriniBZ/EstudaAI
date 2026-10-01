@@ -1,4 +1,5 @@
 import { useState } from "react";
+import PlanCard from "@/components/plan/PlanCard";
 import { useNavigate } from "react-router";
 import { Plus, Trash2, FileText, HelpCircle, Layers } from "lucide-react";
 import { trpc } from "@/providers/trpc";
@@ -161,6 +162,7 @@ export default function Dashboard() {
             <Plus className="mr-2 h-4 w-4" /> Nova matéria
           </Button>
         </div>
+        <PlanCard />
 
         {isLoading ? (
           <div className="mt-8 grid gap-4 sm:grid-cols-2">
