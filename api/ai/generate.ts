@@ -77,18 +77,23 @@ export function buildContext(materialsText: string[]): string {
     : joined;
 }
 
-const quizSchema = z.object({
+/**
+ * Esquema "estrito-compatível": todo campo é obrigatório e não há minItems,
+ * maxItems, minimum etc. O modo estruturado de alguns provedores (Groq, OpenAI
+ * strict) recusa esquemas fora disso. As regras (4 alternativas, índice 0–3)
+ * são conferidas depois, em normalizeQuiz.
+ */
+export const quizSchema = z.object({
   title: z.string().describe("Título curto do quiz"),
   topics: z
     .array(z.string())
-    .optional()
     .describe("Lista dos temas amplos do quiz (cada questão usa exatamente um deles)"),
   questions: z.array(
     z.object({
       topic: z.string().describe("Um dos temas da lista `topics`, escrito igual"),
-      question: z.string(),
-      options: z.array(z.string()).length(4),
-      answerIndex: z.number().int().min(0).max(3),
+      question: z.string().describe("Enunciado, sem numeração e sem as alternativas"),
+      options: z.array(z.string()).describe("Exatamente 4 alternativas, sem letras na frente"),
+      answerIndex: z.number().describe("Índice da alternativa correta: 0, 1, 2 ou 3"),
       explanation: z
         .string()
         .describe("Explicação didática de 1-3 frases sobre a resposta certa"),
@@ -153,10 +158,19 @@ export function normalizeQuiz(raw: z.infer<typeof quizSchema>, count: number): G
       topic: (q.topic || "").trim(),
       question: q.question.replace(NUMBER_PREFIX, "").trim(),
       options: q.options.map((o) => o.replace(LETTER_PREFIX, "").trim()),
-      answerIndex: q.answerIndex,
+      answerIndex: Math.round(Number(q.answerIndex)),
       explanation: q.explanation.trim(),
     }))
-    .filter((q) => q.question && q.options.every(Boolean) && new Set(q.options.map(norm)).size === 4);
+    .filter(
+      (q) =>
+        q.question &&
+        q.options.length === 4 &&
+        q.options.every(Boolean) &&
+        new Set(q.options.map(norm)).size === 4 &&
+        Number.isInteger(q.answerIndex) &&
+        q.answerIndex >= 0 &&
+        q.answerIndex <= 3,
+    );
 
   const OTHER = "Outros temas";
   const declared = (raw.topics ?? []).map((t) => t.trim()).filter(Boolean);
@@ -240,7 +254,7 @@ export async function generateSummaryFromContext(
   });
 }
 
-const flashcardsSchema = z.object({
+export const flashcardsSchema = z.object({
   cards: z.array(
     z.object({
       front: z.string().describe("Pergunta ou termo (frente do cartão)"),

@@ -1,7 +1,7 @@
 import { TRPCError } from "@trpc/server";
 import { and, count, eq, gte, inArray, sql } from "drizzle-orm";
 import { materials, usageEvents, type User } from "@db/schema";
-import { PLANS, type GenerationKind, type PlanId, type PlanLimits } from "@contracts/plans";
+import { GENERATION_KINDS, PLANS, type PlanId, type PlanLimits, type UsageKind } from "@contracts/plans";
 import { getDb } from "../queries/connection";
 
 /** Admin tem acesso completo; os demais seguem o plano salvo. */
@@ -19,6 +19,12 @@ export function monthStart(now = new Date()): Date {
   return new Date(Date.UTC(br.getUTCFullYear(), br.getUTCMonth(), 1, 3, 0, 0));
 }
 
+/** Início do dia corrente no horário de Brasília. */
+export function dayStart(now = new Date()): Date {
+  const br = new Date(now.getTime() - 3 * 3600_000);
+  return new Date(Date.UTC(br.getUTCFullYear(), br.getUTCMonth(), br.getUTCDate(), 3, 0, 0));
+}
+
 export function nextMonthStart(now = new Date()): Date {
   const s = monthStart(now);
   return new Date(Date.UTC(s.getUTCFullYear(), s.getUTCMonth() + 1, 1, 3, 0, 0));
@@ -32,26 +38,42 @@ export async function countFiles(userId: number): Promise<number> {
   return Number(r?.n ?? 0);
 }
 
-export async function countGenerationsThisMonth(userId: number): Promise<number> {
-  const [r] = await getDb()
+type Db = ReturnType<typeof getDb>;
+type Tx = Parameters<Parameters<Db["transaction"]>[0]>[0];
+
+async function countEvents(db: Db | Tx, userId: number, kinds: readonly UsageKind[], since: Date) {
+  const [r] = await db
     .select({ n: count() })
     .from(usageEvents)
-    .where(and(eq(usageEvents.userId, userId), gte(usageEvents.createdAt, monthStart())));
+    .where(
+      and(
+        eq(usageEvents.userId, userId),
+        inArray(usageEvents.kind, [...kinds]),
+        gte(usageEvents.createdAt, since),
+      ),
+    );
   return Number(r?.n ?? 0);
+}
+
+export async function countGenerationsThisMonth(userId: number): Promise<number> {
+  return countEvents(getDb(), userId, GENERATION_KINDS, monthStart());
 }
 
 export async function usageSummary(user: User) {
   const plan = effectivePlan(user);
   const limits = PLANS[plan];
-  const [files, generations] = await Promise.all([
+  const db = getDb();
+  const [files, generations, summariesToday, chatToday] = await Promise.all([
     countFiles(user.id),
-    countGenerationsThisMonth(user.id),
+    countEvents(db, user.id, GENERATION_KINDS, monthStart()),
+    countEvents(db, user.id, ["summary"], dayStart()),
+    countEvents(db, user.id, ["chat"], dayStart()),
   ]);
   return {
     plan,
     planLabel: limits.label,
     limits,
-    usage: { files, generations },
+    usage: { files, generations, summariesToday, chatToday },
     resetsAt: nextMonthStart().toISOString(),
   };
 }
@@ -68,6 +90,17 @@ export async function assertCanUpload(user: User) {
   }
 }
 
+/** Limite de flashcards por geração. */
+export function assertFlashcardsSize(user: User, requested: number) {
+  const { maxFlashcards } = limitsFor(user);
+  if (requested > maxFlashcards) {
+    throw new TRPCError({
+      code: "FORBIDDEN",
+      message: `O plano Gratuito gera até ${maxFlashcards} flashcards por vez. Com o PRO você gera até ${PLANS.pro.maxFlashcards}.`,
+    });
+  }
+}
+
 /** Limite de questões por quiz. */
 export function assertQuizSize(user: User, requested: number) {
   const { maxQuizQuestions } = limitsFor(user);
@@ -79,27 +112,54 @@ export function assertQuizSize(user: User, requested: number) {
   }
 }
 
+function brDate(d: Date) {
+  return d.toLocaleDateString("pt-BR", { timeZone: "America/Sao_Paulo" });
+}
+
+/** Limites que se aplicam a cada tipo de uso. */
+function checksFor(limits: PlanLimits, kind: UsageKind) {
+  const checks: { kinds: readonly UsageKind[]; since: Date; max: number; message: string }[] = [];
+  const tomorrow = new Date(dayStart().getTime() + 24 * 3600_000);
+  if (kind !== "chat" && limits.maxGenerationsPerMonth !== null) {
+    checks.push({
+      kinds: GENERATION_KINDS,
+      since: monthStart(),
+      max: limits.maxGenerationsPerMonth,
+      message: `Você usou as ${limits.maxGenerationsPerMonth} gerações do plano Gratuito deste mês (quiz, resumo e flashcards). O limite renova em ${brDate(nextMonthStart())}, ou assine o PRO para gerar sem limite.`,
+    });
+  }
+  if (kind === "summary" && limits.maxSummariesPerDay !== null) {
+    checks.push({
+      kinds: ["summary"],
+      since: dayStart(),
+      max: limits.maxSummariesPerDay,
+      message: `O plano Gratuito permite ${limits.maxSummariesPerDay} resumos por dia. Tente de novo amanhã (${brDate(tomorrow)}) ou assine o PRO para resumos sem limite.`,
+    });
+  }
+  if (kind === "chat" && limits.maxChatPerDay !== null) {
+    checks.push({
+      kinds: ["chat"],
+      since: dayStart(),
+      max: limits.maxChatPerDay,
+      message: `Você usou as ${limits.maxChatPerDay} perguntas de hoje do plano Gratuito. Volte amanhã (${brDate(tomorrow)}) ou assine o PRO para tirar dúvidas sem limite.`,
+    });
+  }
+  return checks;
+}
+
 /**
- * Reserva uma geração ANTES de chamar a IA, de forma atômica.
+ * Reserva um uso ANTES de chamar a IA, de forma atômica.
  * A trava (pg_advisory_xact_lock por usuário) impede que vários pedidos
  * simultâneos passem todos pela checagem do limite.
- * Devolve uma função para estornar a reserva se a geração falhar.
+ * Devolve uma função para estornar a reserva se a chamada falhar.
  */
-export async function reserveGeneration(user: User, kind: GenerationKind): Promise<() => Promise<void>> {
-  const { maxGenerationsPerMonth } = limitsFor(user);
+export async function reserveUsage(user: User, kind: UsageKind): Promise<() => Promise<void>> {
+  const checks = checksFor(limitsFor(user), kind);
   const id = await getDb().transaction(async (tx) => {
     await tx.execute(sql`select pg_advisory_xact_lock(7001, ${user.id})`);
-    if (maxGenerationsPerMonth !== null) {
-      const [r] = await tx
-        .select({ n: count() })
-        .from(usageEvents)
-        .where(and(eq(usageEvents.userId, user.id), gte(usageEvents.createdAt, monthStart())));
-      if (Number(r?.n ?? 0) >= maxGenerationsPerMonth) {
-        const resets = nextMonthStart().toLocaleDateString("pt-BR", { timeZone: "America/Sao_Paulo" });
-        throw new TRPCError({
-          code: "FORBIDDEN",
-          message: `Você usou as ${maxGenerationsPerMonth} gerações do plano Gratuito deste mês (quiz, resumo e flashcards). O limite renova em ${resets}, ou assine o PRO para gerar sem limite.`,
-        });
+    for (const c of checks) {
+      if ((await countEvents(tx, user.id, c.kinds, c.since)) >= c.max) {
+        throw new TRPCError({ code: "FORBIDDEN", message: c.message });
       }
     }
     const [row] = await tx.insert(usageEvents).values({ userId: user.id, kind }).returning({ id: usageEvents.id });
@@ -111,8 +171,8 @@ export async function reserveGeneration(user: User, kind: GenerationKind): Promi
 }
 
 /** Executa uma geração já com a vaga reservada; estorna se der erro. */
-export async function withGeneration<T>(user: User, kind: GenerationKind, run: () => Promise<T>): Promise<T> {
-  const refund = await reserveGeneration(user, kind);
+export async function withGeneration<T>(user: User, kind: UsageKind, run: () => Promise<T>): Promise<T> {
+  const refund = await reserveUsage(user, kind);
   try {
     return await run();
   } catch (err) {

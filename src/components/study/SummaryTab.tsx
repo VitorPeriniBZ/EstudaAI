@@ -1,4 +1,5 @@
 import { BookOpen, RefreshCw, Sparkles } from "lucide-react";
+import { usePlan } from "@/hooks/usePlan";
 import { trpc } from "@/providers/trpc";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -10,6 +11,11 @@ export default function SummaryTab({ subjectId }: { subjectId: number }) {
   const { data: subjects, isLoading } = trpc.subjects.list.useQuery();
   const subject = subjects?.find((s) => s.id === subjectId);
 
+  const plan = usePlan();
+  const summariesLeft =
+    plan.data && plan.data.limits.maxSummariesPerDay !== null
+      ? Math.max(0, plan.data.limits.maxSummariesPerDay - plan.data.usage.summariesToday)
+      : null;
   const generate = trpc.study.generateSummary.useMutation({
     onSuccess: () => {
       toast.success("Resumo gerado");
@@ -39,9 +45,10 @@ export default function SummaryTab({ subjectId }: { subjectId: number }) {
             ? `Gerado ${subject?.summaryAt ? new Date(subject.summaryAt).toLocaleString("pt-BR") : ""} a partir dos materiais enviados.`
             : "A IA lê todos os materiais prontos e escreve um resumo organizado por temas."}
         </p>
+        <div className="flex flex-col items-end gap-1">
         <Button
           onClick={() => generate.mutate({ subjectId })}
-          disabled={generate.isPending}
+          disabled={generate.isPending || summariesLeft === 0 || plan.generationsLeft === 0}
           variant={hasSummary ? "outline" : "default"}
         >
           {generate.isPending ? (
@@ -56,6 +63,14 @@ export default function SummaryTab({ subjectId }: { subjectId: number }) {
             </>
           )}
         </Button>
+        {summariesLeft !== null && (
+          <span className={`text-xs ${summariesLeft === 0 ? "text-destructive font-semibold" : "text-muted-foreground"}`}>
+            {summariesLeft === 0
+              ? "Limite de resumos de hoje atingido · ilimitado no PRO"
+              : `Plano Gratuito: ${summariesLeft} de ${plan.data?.limits.maxSummariesPerDay} resumos restantes hoje`}
+          </span>
+        )}
+        </div>
       </div>
 
       {generate.isPending && (

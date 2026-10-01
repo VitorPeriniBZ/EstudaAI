@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { usePlan } from "@/hooks/usePlan";
 import { MessageCircleQuestion, Send, Trash2, Loader2 } from "lucide-react";
 import { trpc } from "@/providers/trpc";
 import { Button } from "@/components/ui/button";
@@ -20,6 +21,11 @@ export default function ChatTab({ subjectId }: { subjectId: number }) {
   const bottomRef = useRef<HTMLDivElement>(null);
 
   const { data: history, isLoading } = trpc.study.chatHistory.useQuery({ subjectId });
+  const plan = usePlan();
+  const chatLeft =
+    plan.data && plan.data.limits.maxChatPerDay !== null
+      ? Math.max(0, plan.data.limits.maxChatPerDay - plan.data.usage.chatToday)
+      : null;
   const send = trpc.study.chatSend.useMutation({
     onSuccess: () => {
       utils.study.chatHistory.invalidate({ subjectId });
@@ -116,9 +122,17 @@ export default function ChatTab({ subjectId }: { subjectId: number }) {
         <div ref={bottomRef} />
       </div>
 
+      {chatLeft !== null && (
+        <p className={`mt-3 text-xs ${chatLeft === 0 ? "text-destructive font-semibold" : "text-muted-foreground"}`}>
+          {chatLeft === 0
+            ? "Você usou as perguntas de hoje do plano Gratuito. Volte amanhã ou assine o PRO para perguntas sem limite."
+            : `Plano Gratuito: ${chatLeft} de ${plan.data?.limits.maxChatPerDay} perguntas restantes hoje · ilimitado no PRO`}
+        </p>
+      )}
       <div className="mt-3 flex gap-2 items-end">
         <Textarea
-          placeholder="Digite sua dúvida… (Enter envia, Shift+Enter quebra linha)"
+          disabled={chatLeft === 0}
+          placeholder={chatLeft === 0 ? "Limite de perguntas de hoje atingido" : "Digite sua dúvida… (Enter envia, Shift+Enter quebra linha)"}
           value={input}
           onChange={(e) => setInput(e.target.value)}
           rows={2}
@@ -134,7 +148,7 @@ export default function ChatTab({ subjectId }: { subjectId: number }) {
           size="icon"
           className="h-10 w-10 shrink-0"
           onClick={() => ask()}
-          disabled={!input.trim() || send.isPending}
+          disabled={!input.trim() || send.isPending || chatLeft === 0}
           aria-label="Enviar pergunta"
         >
           <Send className="h-4 w-4" />

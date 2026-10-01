@@ -1,10 +1,11 @@
 import { z } from "zod";
 import { TRPCError } from "@trpc/server";
-import { asc, count, desc, eq, gte, inArray } from "drizzle-orm";
+import { and, asc, count, desc, eq, gte, inArray } from "drizzle-orm";
 import { createRouter, adminQuery } from "./middleware";
 import { getDb } from "./queries/connection";
 import { aiProviders, materials, subjects, usageEvents, users } from "../db/schema";
-import { monthStart } from "./lib/plans";
+import { dayStart, monthStart } from "./lib/plans";
+import { GENERATION_KINDS } from "@contracts/plans";
 import { testProvider } from "./ai/providers";
 
 function maskKey(key: string | null): string | null {
@@ -52,7 +53,12 @@ export const adminRouter = createRouter({
     const gens = await db
       .select({ userId: usageEvents.userId, n: count() })
       .from(usageEvents)
-      .where(gte(usageEvents.createdAt, since))
+      .where(and(gte(usageEvents.createdAt, since), inArray(usageEvents.kind, [...GENERATION_KINDS])))
+      .groupBy(usageEvents.userId);
+    const chats = await db
+      .select({ userId: usageEvents.userId, n: count() })
+      .from(usageEvents)
+      .where(and(gte(usageEvents.createdAt, dayStart()), eq(usageEvents.kind, "chat")))
       .groupBy(usageEvents.userId);
     const subj = await db
       .select({ userId: subjects.userId, n: count() })
@@ -60,7 +66,7 @@ export const adminRouter = createRouter({
       .groupBy(subjects.userId);
     const by = (list: { userId: number; n: number }[]) =>
       new Map(list.map((r) => [r.userId, Number(r.n)]));
-    const f = by(files), g = by(gens), sj = by(subj);
+    const f = by(files), g = by(gens), sj = by(subj), ch = by(chats);
     return rows.map((u) => ({
       id: u.id,
       name: u.name,
@@ -73,6 +79,7 @@ export const adminRouter = createRouter({
       files: f.get(u.id) ?? 0,
       generationsThisMonth: g.get(u.id) ?? 0,
       subjects: sj.get(u.id) ?? 0,
+      chatToday: ch.get(u.id) ?? 0,
     }));
   }),
 

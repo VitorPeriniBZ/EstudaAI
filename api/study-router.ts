@@ -3,8 +3,8 @@ import { z } from "zod";
 import { TRPCError } from "@trpc/server";
 import { and, desc, eq, inArray } from "drizzle-orm";
 import { createRouter, authedQuery } from "./middleware";
-import { assertQuizSize, withGeneration } from "./lib/plans";
-import { MAX_QUIZ_QUESTIONS } from "@contracts/plans";
+import { assertFlashcardsSize, assertQuizSize, withGeneration } from "./lib/plans";
+import { MAX_FLASHCARDS, MAX_QUIZ_QUESTIONS } from "@contracts/plans";
 import { getDb } from "./queries/connection";
 import {
   subjects,
@@ -241,13 +241,14 @@ export const studyRouter = createRouter({
     .input(
       z.object({
         subjectId: z.number(),
-        count: z.number().int().min(5).max(30).default(15),
+        count: z.number().int().min(5).max(MAX_FLASHCARDS).default(15),
         replace: z.boolean().default(false),
       }),
     )
     .mutation(async ({ ctx, input }) => {
       const subject = await requireSubject(input.subjectId, ctx.user.id);
       const context = await subjectContext(input.subjectId);
+      assertFlashcardsSize(ctx.user, input.count);
       const cards = await withGeneration(ctx.user, "flashcards", () =>
         generateFlashcardsFromContext(context, subject.name, input.count),
       );
@@ -272,7 +273,7 @@ export const studyRouter = createRouter({
       await requireSubject(input.subjectId, ctx.user.id);
       return getDb().query.flashcards.findMany({
         where: eq(flashcards.subjectId, input.subjectId),
-        orderBy: desc(flashcards.createdAt),
+        orderBy: [desc(flashcards.createdAt), desc(flashcards.id)],
       });
     }),
 
@@ -306,7 +307,7 @@ export const studyRouter = createRouter({
       await requireSubject(input.subjectId, ctx.user.id);
       const rows = await getDb().query.chatMessages.findMany({
         where: eq(chatMessages.subjectId, input.subjectId),
-        orderBy: desc(chatMessages.createdAt),
+        orderBy: [desc(chatMessages.createdAt), desc(chatMessages.id)],
       });
       return rows.reverse();
     }),
@@ -324,14 +325,17 @@ export const studyRouter = createRouter({
       const db = getDb();
       const historyRows = await db.query.chatMessages.findMany({
         where: eq(chatMessages.subjectId, input.subjectId),
-        orderBy: desc(chatMessages.createdAt),
+        orderBy: [desc(chatMessages.createdAt), desc(chatMessages.id)],
       });
       const history = historyRows.reverse().slice(-10);
-      const answer = await chatReply(
-        context,
-        subject.name,
-        history.map((h) => ({ role: h.role, content: h.content })),
-        input.message,
+      // conta no limite diário de perguntas (estorna se a IA falhar)
+      const answer = await withGeneration(ctx.user, "chat", () =>
+        chatReply(
+          context,
+          subject.name,
+          history.map((h) => ({ role: h.role, content: h.content })),
+          input.message,
+        ),
       );
       await db.insert(chatMessages).values([
         {

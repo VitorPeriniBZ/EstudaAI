@@ -27,7 +27,7 @@ export default function PlanCard() {
       <div className="mt-6 rounded-lg border bg-card px-4 py-3 flex items-center gap-2 text-sm">
         <Crown className="h-4 w-4 text-amber-500" />
         <span className="font-semibold">Plano PRO</span>
-        <span className="text-muted-foreground">· arquivos e gerações sem limite, quizzes de até {data.limits.maxQuizQuestions} questões</span>
+        <span className="text-muted-foreground">· arquivos, gerações, resumos e chat sem limite · quiz até {data.limits.maxQuizQuestions} questões · flashcards até {data.limits.maxFlashcards}</span>
       </div>
     );
   }
@@ -64,6 +64,11 @@ export default function PlanCard() {
           <Meter used={data.usage.files} max={data.limits.maxFiles ?? 1} />
         </div>
       </div>
+      <p className="mt-3 text-xs text-muted-foreground">
+        Hoje: <strong className="text-foreground">{data.usage.summariesToday} de {data.limits.maxSummariesPerDay}</strong> resumos ·{" "}
+        <strong className="text-foreground">{data.usage.chatToday} de {data.limits.maxChatPerDay}</strong> perguntas no chat ·
+        flashcards até {data.limits.maxFlashcards} por vez · quiz até {data.limits.maxQuizQuestions} questões
+      </p>
       <ProDialog open={open} onOpenChange={setOpen} />
     </div>
   );

@@ -20,8 +20,10 @@ const ROWS: { label: string; free: string; pro: string }[] = [
     pro: fmt(PLANS.pro.maxGenerationsPerMonth, ""),
   },
   { label: "Questões por quiz", free: `até ${PLANS.free.maxQuizQuestions}`, pro: `até ${PLANS.pro.maxQuizQuestions}` },
+  { label: "Resumos", free: fmt(PLANS.free.maxSummariesPerDay, "por dia"), pro: fmt(PLANS.pro.maxSummariesPerDay, "") },
+  { label: "Flashcards por geração", free: `até ${PLANS.free.maxFlashcards}`, pro: `até ${PLANS.pro.maxFlashcards}` },
+  { label: "Perguntas no chat de dúvidas", free: fmt(PLANS.free.maxChatPerDay, "por dia"), pro: fmt(PLANS.pro.maxChatPerDay, "") },
   { label: "Anotações digitadas", free: "Sem limite", pro: "Sem limite" },
-  { label: "Chat de dúvidas", free: "Incluído", pro: "Incluído" },
 ];
 
 export default function ProDialog({ open, onOpenChange }: { open: boolean; onOpenChange: (v: boolean) => void }) {

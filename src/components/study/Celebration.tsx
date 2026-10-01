@@ -1,12 +1,12 @@
 /**
  * Fogos e brilho do quiz.
  *  - celebrate(x, y, streak): a cada acerto (mais fogos conforme a sequência)
- *  - celebratePerfect(): ao acertar todas — "PARABÉNS!" gigante piscando por 2 s
+ *  - celebratePerfect(): ao acertar todas — "PERFEITO" gigante piscando por 2 s
  */
 import { useEffect, useRef, useState } from "react";
 
 /** Texto exibido ao gabaritar o quiz. */
-export const PERFECT_MESSAGE = "PARABÉNS!";
+export const PERFECT_MESSAGE = "PERFEITO";
 
 type Particle = {
   x: number; y: number; vx: number; vy: number; life: number; decay: number;
