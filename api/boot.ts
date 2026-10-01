@@ -1,5 +1,6 @@
 import { Hono } from "hono";
 import { bodyLimit } from "hono/body-limit";
+import { compress } from "hono/compress";
 import type { HttpBindings } from "@hono/node-server";
 import { fetchRequestHandler } from "@trpc/server/adapters/fetch";
 import { sql } from "drizzle-orm";
@@ -14,6 +15,13 @@ import { seedProvidersFromEnv } from "./ai/providers";
 import { Paths } from "@contracts/constants";
 
 const app = new Hono<{ Bindings: HttpBindings }>();
+
+// gzip em HTML, JS, CSS e JSON (as respostas do tRPC com quiz e resumo são grandes);
+// os arquivos enviados (PDF/imagem) ficam de fora, já são comprimidos
+app.use("*", async (c, next) => {
+  if (c.req.path.startsWith("/api/files/")) return next();
+  return compress()(c, next);
+});
 
 // upload vai em base64 (15 MB de arquivo ≈ 20 MB de JSON)
 app.use("/api/*", bodyLimit({ maxSize: 25 * 1024 * 1024 }));

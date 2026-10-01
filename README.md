@@ -159,3 +159,30 @@ render.yaml            blueprint do Render
 
 Para alterar o banco: edite `db/schema.ts` → `npm run db:generate` → faça commit da
 nova migration. Ela é aplicada no próximo deploy.
+
+---
+
+## Agente de testes
+
+Um comando testa o app inteiro — login com Google, matérias, upload, IA com
+failover, planos e limites, concorrência, chat e a interface no navegador — usando
+servidores falsos do Google e das IAs (não gasta cota nem precisa de chave).
+
+```bash
+# 1. um banco SÓ para testes (o agente apaga as tabelas entre as baterias)
+createdb estudaai_test        # ou: docker run -d -e POSTGRES_PASSWORD=postgres -e POSTGRES_DB=estudaai_test -p 5432:5432 postgres:16
+
+# 2. (opcional) interface no navegador
+npm i -D playwright && npx playwright install chromium
+
+# 3. rodar
+TEST_DATABASE_URL=postgres://postgres:postgres@localhost:5432/estudaai_test npm run test:agent
+
+# só algumas baterias:
+TEST_DATABASE_URL=... npm run test:agent -- planos chat
+```
+
+- Recusa rodar se o nome do banco não tiver "test" — nunca aponte para o Neon de produção.
+- Roda sozinho no GitHub a cada push (`.github/workflows/agente-de-testes.yml`), com um Postgres descartável.
+- O relatório da última execução fica em `tests/agent/relatorio.json`.
+- `npm run check:schemas` confere se os esquemas enviados às IAs funcionam no modo estrito (Groq/OpenAI).

@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { usePlan } from "@/hooks/usePlan";
-import { MessageCircleQuestion, Send, Trash2, Loader2 } from "lucide-react";
+import { MessageCircleQuestion, Send, Trash2 } from "lucide-react";
 import { trpc } from "@/providers/trpc";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
@@ -26,12 +26,27 @@ export default function ChatTab({ subjectId }: { subjectId: number }) {
     plan.data && plan.data.limits.maxChatPerDay !== null
       ? Math.max(0, plan.data.limits.maxChatPerDay - plan.data.usage.chatToday)
       : null;
-  const send = trpc.study.chatSend.useMutation({
-    onSuccess: () => {
-      utils.study.chatHistory.invalidate({ subjectId });
-    },
-    onError: (e) => toast.error(e.message),
-  });
+  // pergunta já enviada, exibida na hora enquanto a resposta não chega
+  const [pending, setPending] = useState<string | null>(null);
+  const [elapsed, setElapsed] = useState(0);
+  const send = trpc.study.chatSend.useMutation();
+
+  useEffect(() => {
+    if (!pending) return;
+    setElapsed(0);
+    const t0 = Date.now();
+    const iv = setInterval(() => setElapsed(Math.floor((Date.now() - t0) / 1000)), 1000);
+    return () => clearInterval(iv);
+  }, [pending]);
+
+  const status =
+    elapsed < 6
+      ? "Pensando"
+      : elapsed < 15
+        ? "Lendo seus materiais"
+        : elapsed < 35
+          ? "Escrevendo a resposta"
+          : "Quase lá — respostas longas podem levar até 1 minuto";
   const clear = trpc.study.chatClear.useMutation({
     onSuccess: () => {
       toast.success("Conversa limpa");
@@ -40,14 +55,23 @@ export default function ChatTab({ subjectId }: { subjectId: number }) {
   });
 
   useEffect(() => {
-    bottomRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [history?.length, send.isPending]);
+    bottomRef.current?.scrollIntoView({ behavior: "smooth", block: "end" });
+  }, [history?.length, pending]);
 
-  function ask(msg?: string) {
+  async function ask(msg?: string) {
     const text = (msg ?? input).trim();
-    if (!text || send.isPending) return;
+    if (!text || pending) return;
     setInput("");
-    send.mutate({ subjectId, message: text });
+    setPending(text);
+    try {
+      await send.mutateAsync({ subjectId, message: text });
+      await utils.study.chatHistory.invalidate({ subjectId });
+    } catch (e) {
+      setInput(text); // devolve o texto para a pessoa não perder a pergunta
+      toast.error((e as Error).message);
+    } finally {
+      setPending(null);
+    }
   }
 
   return (
@@ -74,15 +98,15 @@ export default function ChatTab({ subjectId }: { subjectId: number }) {
             <Skeleton className="h-12 w-3/4" />
             <Skeleton className="h-12 w-2/3 ml-auto" />
           </div>
-        ) : history?.length ? (
+        ) : history?.length || pending ? (
           <>
-            {history.map((m) => (
+            {(history ?? []).map((m) => (
               <div
                 key={m.id}
                 className={`flex ${m.role === "user" ? "justify-end" : "justify-start"}`}
               >
                 <div
-                  className={`max-w-[85%] rounded-2xl px-4 py-2.5 text-sm ${
+                  className={`max-w-[85%] min-w-0 rounded-2xl px-4 py-2.5 text-sm ${
                     m.role === "user"
                       ? "bg-primary text-primary-foreground rounded-br-md"
                       : "bg-secondary text-secondary-foreground rounded-bl-md"
@@ -96,12 +120,21 @@ export default function ChatTab({ subjectId }: { subjectId: number }) {
                 </div>
               </div>
             ))}
-            {send.isPending && (
-              <div className="flex justify-start">
-                <div className="bg-secondary rounded-2xl rounded-bl-md px-4 py-3 text-sm text-muted-foreground flex items-center gap-2">
-                  <Loader2 className="h-4 w-4 animate-spin" /> pensando…
+            {pending && (
+              <>
+                <div className="flex justify-end">
+                  <div className="max-w-[85%] rounded-2xl rounded-br-md bg-primary px-4 py-2.5 text-sm text-primary-foreground">
+                    <p className="whitespace-pre-wrap">{pending}</p>
+                  </div>
                 </div>
-              </div>
+                <div className="flex justify-start" role="status" aria-live="polite">
+                  <div className="flex items-center gap-2.5 rounded-2xl rounded-bl-md bg-secondary px-4 py-3 text-sm text-muted-foreground">
+                    <span className="typing" aria-hidden><i /><i /><i /></span>
+                    <span>{status}…</span>
+                    {elapsed >= 6 && <span className="tabular-nums text-xs opacity-70">{elapsed}s</span>}
+                  </div>
+                </div>
+              </>
             )}
           </>
         ) : (
@@ -148,7 +181,7 @@ export default function ChatTab({ subjectId }: { subjectId: number }) {
           size="icon"
           className="h-10 w-10 shrink-0"
           onClick={() => ask()}
-          disabled={!input.trim() || send.isPending || chatLeft === 0}
+          disabled={!input.trim() || !!pending || chatLeft === 0}
           aria-label="Enviar pergunta"
         >
           <Send className="h-4 w-4" />

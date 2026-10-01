@@ -24,5 +24,15 @@ export default defineConfig({
   build: {
     outDir: path.resolve(__dirname, "dist/public"),
     emptyOutDir: true,
+    rollupOptions: {
+      output: {
+        // bibliotecas que mudam pouco em arquivos próprios: o navegador guarda em cache
+        manualChunks: {
+          react: ["react", "react-dom", "react-router"],
+          data: ["@tanstack/react-query", "@trpc/client", "@trpc/react-query", "superjson"],
+          markdown: ["react-markdown", "remark-gfm"],
+        },
+      },
+    },
   },
 });

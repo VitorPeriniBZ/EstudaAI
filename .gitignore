@@ -38,3 +38,6 @@ build/
 # Test coverage
 coverage/
 .nyc_output/
+
+# relatório do agente de testes
+tests/agent/relatorio.json

@@ -1,6 +1,6 @@
 import { z } from "zod";
 import { TRPCError } from "@trpc/server";
-import { and, desc, eq } from "drizzle-orm";
+import { and, desc, eq, sql } from "drizzle-orm";
 import { createRouter, authedQuery } from "./middleware";
 import { getDb } from "./queries/connection";
 import { materials } from "../db/schema";
@@ -41,10 +41,24 @@ export const materialsRouter = createRouter({
     .input(z.object({ subjectId: z.number() }))
     .query(async ({ ctx, input }) => {
       await requireSubject(input.subjectId, ctx.user.id);
-      return getDb().query.materials.findMany({
-        where: eq(materials.subjectId, input.subjectId),
-        orderBy: desc(materials.createdAt),
-      });
+      // não envia o texto extraído (pode ter MBs); só o tamanho dele
+      return getDb()
+        .select({
+          id: materials.id,
+          subjectId: materials.subjectId,
+          userId: materials.userId,
+          kind: materials.kind,
+          title: materials.title,
+          fileKey: materials.fileKey,
+          fileSize: materials.fileSize,
+          status: materials.status,
+          statusMsg: materials.statusMsg,
+          createdAt: materials.createdAt,
+          textLength: sql<number>`coalesce(length(${materials.textContent}), 0)::int`,
+        })
+        .from(materials)
+        .where(eq(materials.subjectId, input.subjectId))
+        .orderBy(desc(materials.createdAt), desc(materials.id));
     }),
 
   /** Upload de PDF ou imagem (base64). Extrai o texto e salva o arquivo no storage. */
