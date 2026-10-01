@@ -19,6 +19,21 @@ export class AiTransient extends Error {
   }
 }
 
+/**
+ * Pedido maior que o limite do provedor (tokens por minuto, janela de contexto).
+ * Dá para tentar de novo com menos material, ou em outro provedor.
+ */
+export class AiTooLarge extends Error {
+  readonly limit: number | null;
+  readonly requested: number | null;
+  constructor(message: string, limit: number | null, requested: number | null) {
+    super(message);
+    this.name = "AiTooLarge";
+    this.limit = limit;
+    this.requested = requested;
+  }
+}
+
 /** Erro terminal (conteúdo recusado, requisição inválida) → não adianta trocar de IA */
 export class AiRejected extends Error {
   constructor(message: string) {
@@ -54,7 +69,12 @@ function extractDetail(e: AnyErr): string {
 }
 
 export function classifyAiError(err: unknown): Error {
-  if (err instanceof AiUnavailable || err instanceof AiTransient || err instanceof AiRejected) {
+  if (
+    err instanceof AiUnavailable ||
+    err instanceof AiTransient ||
+    err instanceof AiRejected ||
+    err instanceof AiTooLarge
+  ) {
     return err;
   }
   let e = (err ?? {}) as AnyErr;
@@ -63,6 +83,17 @@ export function classifyAiError(err: unknown): Error {
 
   const status = e.statusCode ?? e.status;
   const detail = extractDetail(e).slice(0, 400);
+
+  // pedido grande demais (Groq: 413 "Request too large … tokens per minute";
+  // OpenAI/Anthropic: "context length", "prompt is too long")
+  if (
+    status === 413 ||
+    /request too large|tokens per minute|\bTPM\b|context[ _-]?length|maximum context|prompt is too long|too many tokens|reduce (your|the) (message|prompt)/i.test(detail)
+  ) {
+    const limit = Number((detail.match(/limit[:\s]+(\d+)/i) || [])[1]) || null;
+    const requested = Number((detail.match(/requested[:\s]+(\d+)/i) || [])[1]) || null;
+    return new AiTooLarge(`Pedido grande demais para este provedor: ${detail}`, limit, requested);
+  }
 
   if (typeof status === "number") {
     if (status === 401 || status === 403) {

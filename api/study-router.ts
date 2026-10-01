@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import { z } from "zod";
 import { TRPCError } from "@trpc/server";
 import { and, desc, eq, inArray } from "drizzle-orm";
@@ -26,9 +27,16 @@ async function subjectContext(subjectId: number) {
   const mats = await getDb().query.materials.findMany({
     where: and(eq(materials.subjectId, subjectId), eq(materials.status, "ready")),
   });
+  // ignora materiais repetidos (o mesmo PDF enviado duas vezes)
+  const seen = new Set<string>();
   const texts = mats
     .map((m) => m.textContent ?? "")
-    .filter((t) => t.trim().length > 0);
+    .filter((t) => {
+      const key = createHash("sha1").update(t.replace(/\s+/g, " ").trim()).digest("hex");
+      if (!t.trim() || seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    });
   if (texts.length === 0) {
     throw new TRPCError({
       code: "PRECONDITION_FAILED",

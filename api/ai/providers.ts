@@ -13,7 +13,7 @@ import type { LanguageModel } from "ai";
 import { asc, eq } from "drizzle-orm";
 import { getDb } from "../queries/connection";
 import { aiProviders, type AiProvider } from "../../db/schema";
-import { AiRejected, AiTransient, AiUnavailable, classifyAiError } from "./errors";
+import { AiRejected, AiTooLarge, AiTransient, AiUnavailable, classifyAiError } from "./errors";
 import { env } from "../lib/env";
 import { dualError, UserMessages } from "../lib/user-errors";
 
@@ -66,12 +66,29 @@ async function candidates(needVision: boolean): Promise<Candidate[]> {
   return list;
 }
 
+/** Opções repassadas a cada tentativa. */
+export interface AiCallOptions {
+  /** Fração do material a enviar (1 = tudo). Diminui quando o provedor acusa pedido grande demais. */
+  contextFactor: number;
+}
+
+/** Quantas vezes reduzir o material no mesmo provedor antes de passar para o próximo. */
+const MAX_SHRINKS = 2;
+
+/** Próximo fator de redução, mirando ~75% do limite informado pelo provedor. */
+function nextFactor(current: number, err: AiTooLarge, shrinkCount: number): number {
+  if (shrinkCount === 0 && err.limit && err.requested && err.requested > err.limit) {
+    return Math.max(0.05, current * ((err.limit * 0.75) / err.requested));
+  }
+  return Math.max(0.05, current * 0.5);
+}
+
 /**
  * Executa `fn` contra cada provedor até um funcionar.
  * Se não houver nenhum provedor ativo, devolve um erro amigável.
  */
 export async function withAiFallback<T>(
-  fn: (model: LanguageModel) => Promise<T>,
+  fn: (model: LanguageModel, opts: AiCallOptions) => Promise<T>,
   opts?: { needVision?: boolean },
 ): Promise<T> {
   const needVision = opts?.needVision ?? false;
@@ -88,14 +105,27 @@ export async function withAiFallback<T>(
 
   const failures: string[] = [];
   for (const c of list) {
+    let contextFactor = 1;
+    for (let shrink = 0; ; shrink++) {
     try {
-      return await fn(c.model);
+      return await fn(c.model, { contextFactor });
     } catch (err) {
       const classified = classifyAiError(err);
-      if (classified instanceof AiUnavailable || classified instanceof AiTransient) {
+      if (classified instanceof AiTooLarge && shrink < MAX_SHRINKS) {
+        contextFactor = nextFactor(contextFactor, classified, shrink);
+        console.warn(
+          `[ai] ${c.name}: pedido grande demais, tentando com ${Math.round(contextFactor * 100)}% do material`,
+        );
+        continue;
+      }
+      if (
+        classified instanceof AiUnavailable ||
+        classified instanceof AiTransient ||
+        classified instanceof AiTooLarge
+      ) {
         console.warn(`[ai] ${c.name} falhou, tentando o próximo: ${classified.message}`);
         failures.push(`${c.name}: ${classified.message}`);
-        continue;
+        break;
       }
       console.warn(`[ai] ${c.name} recusou o pedido: ${classified.message}`);
       throw dualError(
@@ -103,6 +133,7 @@ export async function withAiFallback<T>(
         `A IA recusou o pedido (${c.name}): ${classified.message}`,
         UserMessages.aiRejected,
       );
+    }
     }
   }
 

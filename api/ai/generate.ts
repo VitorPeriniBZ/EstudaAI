@@ -59,6 +59,15 @@ export async function extractImageText(
 
 const MAX_CONTEXT = 60_000;
 
+/** Corta o material para a fração pedida (quando o provedor tem limite de tamanho). */
+function fit(context: string, factor: number): string {
+  if (factor >= 1) return context;
+  const max = Math.max(2_000, Math.floor(context.length * factor));
+  return context.length > max
+    ? context.slice(0, max) + "\n\n[...material reduzido para caber no limite da IA...]"
+    : context;
+}
+
 export function buildContext(materialsText: string[]): string {
   const joined = materialsText
     .map((t, i) => `--- Material ${i + 1} ---\n${t}`)
@@ -92,7 +101,7 @@ export async function generateQuizFromContext(
   subjectName: string,
   count: number,
 ): Promise<GeneratedQuiz> {
-  return withAiFallback(async (model) => {
+  return withAiFallback(async (model, { contextFactor }) => {
     const { object } = await generateObject({
       maxRetries: AI_RETRIES,
       model,
@@ -106,7 +115,7 @@ export async function generateQuizFromContext(
         `- Distratores plausíveis, sem pegadinhas de redação.\n` +
         `- A explicação deve citar o conceito do material que justifica a resposta.\n` +
         `- Não invente fatos fora do material.\n\n` +
-        `MATERIAL:\n${context}`,
+        `MATERIAL:\n${fit(context, contextFactor)}`,
     });
     return object;
   });
@@ -116,7 +125,7 @@ export async function generateSummaryFromContext(
   context: string,
   subjectName: string,
 ): Promise<string> {
-  return withAiFallback(async (model) => {
+  return withAiFallback(async (model, { contextFactor }) => {
     const { text } = await generateText({
         maxRetries: AI_RETRIES,
       model,
@@ -128,7 +137,7 @@ export async function generateSummaryFromContext(
         `- Definições em negrito, listas curtas, tabelas comparativas quando fizer sentido.\n` +
         `- Um bloco "> Não confunda:" sempre que houver conceitos que os alunos costumam trocar.\n` +
         `- Linguagem direta, sem enrolação, focada no que cai em prova.\n\n` +
-        `MATERIAL:\n${context}`,
+        `MATERIAL:\n${fit(context, contextFactor)}`,
     });
     return text.trim();
   });
@@ -150,7 +159,7 @@ export async function generateFlashcardsFromContext(
   subjectName: string,
   count: number,
 ): Promise<{ front: string; back: string }[]> {
-  return withAiFallback(async (model) => {
+  return withAiFallback(async (model, { contextFactor }) => {
     const { object } = await generateObject({
       maxRetries: AI_RETRIES,
       model,
@@ -160,7 +169,7 @@ export async function generateFlashcardsFromContext(
         `Com base EXCLUSIVA no material abaixo, crie exatamente ${count} flashcards em português.\n` +
         `- Frente: pergunta curta ou termo. Verso: resposta objetiva (1-3 frases).\n` +
         `- Cubra definições, classificações, ciclos, comparações e pegadinhas clássicas.\n\n` +
-        `MATERIAL:\n${context}`,
+        `MATERIAL:\n${fit(context, contextFactor)}`,
     });
     return object.cards;
   });
@@ -172,7 +181,7 @@ export async function chatReply(
   history: { role: "user" | "assistant"; content: string }[],
   question: string,
 ): Promise<string> {
-  return withAiFallback(async (model) => {
+  return withAiFallback(async (model, { contextFactor }) => {
     const { text } = await generateText({
         maxRetries: AI_RETRIES,
       model,
@@ -180,7 +189,7 @@ export async function chatReply(
         `Você é um tutor da matéria "${subjectName}" ajudando um universitário a estudar. ` +
         `Responda em português, de forma didática e objetiva, usando Markdown leve. ` +
         `Baseie-se no material do estudante abaixo; se a resposta não estiver no material, diga isso e responda com conhecimento geral deixando claro que é complementar.\n\n` +
-        `MATERIAL DO ESTUDANTE:\n${context}`,
+        `MATERIAL DO ESTUDANTE:\n${fit(context, contextFactor)}`,
       messages: [
         ...history.slice(-10).map((m) => ({ role: m.role, content: m.content })),
         { role: "user" as const, content: question },
