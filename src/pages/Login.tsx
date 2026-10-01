@@ -12,7 +12,7 @@ const ERRORS: Record<string, string> = {
   google_recusou: "O Google não autorizou o login. Tente novamente.",
   google_falhou: "Não foi possível concluir o login com o Google. Tente novamente.",
   google_nao_configurado:
-    "O login com Google ainda não foi configurado neste servidor (faltam GOOGLE_CLIENT_ID e GOOGLE_CLIENT_SECRET).",
+    "O login está temporariamente indisponível. Tente novamente mais tarde.",
 };
 
 function GoogleIcon() {
@@ -85,7 +85,9 @@ export default function Login() {
           </Button>
 
           <p className="mt-4 text-center text-xs text-muted-foreground">
-            Usamos só seu nome, e-mail e foto do Google para criar sua conta.
+            Usamos só seu nome, e-mail e foto do Google para criar sua conta. Ao entrar, você
+            concorda com os <a href="/termos" className="underline">Termos de uso</a> e a{" "}
+            <a href="/privacidade" className="underline">Política de Privacidade</a>.
           </p>
         </div>
       </main>

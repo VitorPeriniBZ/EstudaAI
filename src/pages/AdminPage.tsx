@@ -1,4 +1,5 @@
 import { useState } from "react";
+import NotFound from "./NotFound";
 import {
   ShieldCheck,
   Plus,
@@ -43,7 +44,7 @@ import { toast } from "sonner";
 
 type ProviderForm = {
   name: string;
-  type: "anthropic" | "openai";
+  type: "anthropic" | "openai" | "google";
   apiKey: string;
   baseUrl: string;
   model: string;
@@ -66,11 +67,27 @@ const EMPTY_FORM: ProviderForm = {
 const TYPE_LABEL: Record<string, string> = {
   anthropic: "Anthropic (Claude)",
   openai: "OpenAI-compatível",
+  google: "Google Gemini",
 };
+
+/** Aviso simples para nomes de modelo claramente inválidos (ex.: "Gemini"). */
+function modelWarning(type: string, model: string): string | null {
+  const m = model.trim();
+  if (!m) return null;
+  if (/\s/.test(m)) return "O identificador do modelo não tem espaços.";
+  if (type === "google" && !/^(models\/)?gemini-[\w.-]+$/i.test(m)) {
+    return "Modelos do Gemini têm o formato gemini-2.5-flash, gemini-2.5-pro…";
+  }
+  if (type === "anthropic" && !/^claude-[\w.-]+$/i.test(m)) {
+    return "Modelos da Anthropic têm o formato claude-sonnet-5, claude-haiku-4-5…";
+  }
+  return null;
+}
 
 const MODEL_PLACEHOLDER: Record<string, string> = {
   anthropic: "claude-sonnet-5",
-  openai: "gpt-4o-mini, llama-3.3-70b, gemini-2.0-flash…",
+  openai: "gpt-4o-mini, llama-3.3-70b…",
+  google: "gemini-2.5-flash",
 };
 
 export default function AdminPage() {
@@ -127,19 +144,8 @@ export default function AdminPage() {
   });
 
   if (authLoading) return null;
-  if (!isAdmin) {
-    return (
-      <div className="min-h-screen">
-        <AppHeader />
-        <main className="mx-auto max-w-3xl px-4 py-16 text-center">
-          <ShieldCheck className="mx-auto h-10 w-10 text-muted-foreground mb-4" />
-          <p className="text-muted-foreground">
-            Esta área é restrita ao administrador do site.
-          </p>
-        </main>
-      </div>
-    );
-  }
+  // não-admin: a página simplesmente "não existe"
+  if (!isAdmin) return <NotFound />;
 
   function openNew() {
     setEditingId(null);
@@ -335,8 +341,14 @@ export default function AdminPage() {
                   setForm({
                     ...form,
                     type,
-                    model: type === "anthropic" ? "claude-sonnet-5" : form.model,
-                    vision: type === "anthropic",
+                    model:
+                      type === "anthropic"
+                        ? "claude-sonnet-5"
+                        : type === "google"
+                          ? "gemini-2.5-flash"
+                          : form.model,
+                    vision: type === "anthropic" || type === "google",
+                    baseUrl: type === "openai" ? form.baseUrl : "",
                   });
                 }}
               >
@@ -345,6 +357,7 @@ export default function AdminPage() {
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="anthropic">Anthropic (Claude)</SelectItem>
+                  <SelectItem value="google">Google Gemini</SelectItem>
                   <SelectItem value="openai">
                     OpenAI-compatível (OpenAI, Groq, OpenRouter, Gemini…)
                   </SelectItem>
@@ -359,7 +372,13 @@ export default function AdminPage() {
                 <div className="relative">
                   <Input
                     type={showKey ? "text" : "password"}
-                    placeholder={form.type === "anthropic" ? "sk-ant-…" : "sk-…"}
+                    placeholder={
+                      form.type === "anthropic"
+                        ? "sk-ant-…"
+                        : form.type === "google"
+                          ? "chave do Google AI Studio"
+                          : "sk-…"
+                    }
                     value={form.apiKey}
                     onChange={(e) => setForm({ ...form, apiKey: e.target.value })}
                     autoComplete="off"
@@ -394,6 +413,12 @@ export default function AdminPage() {
                 value={form.model}
                 onChange={(e) => setForm({ ...form, model: e.target.value })}
               />
+              {modelWarning(form.type, form.model) && (
+                <p className="mt-1 text-xs text-destructive">{modelWarning(form.type, form.model)}</p>
+              )}
+              <p className="mt-1 text-xs text-muted-foreground">
+                Use o identificador exato do modelo (ex.: {MODEL_PLACEHOLDER[form.type].split(",")[0]}).
+              </p>
             </div>
             <div className="grid grid-cols-2 gap-4">
               <div>

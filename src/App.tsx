@@ -6,6 +6,7 @@ import SubjectPage from "./pages/SubjectPage";
 import AdminPage from "./pages/AdminPage";
 import Login from "./pages/Login";
 import NotFound from "./pages/NotFound";
+import { Privacidade, Termos } from "./pages/Legal";
 
 export default function App() {
   return (
@@ -16,6 +17,8 @@ export default function App() {
         <Route path="/app" element={<Dashboard />} />
         <Route path="/app/materia/:id" element={<SubjectPage />} />
         <Route path="/app/admin" element={<AdminPage />} />
+        <Route path="/privacidade" element={<Privacidade />} />
+        <Route path="/termos" element={<Termos />} />
         <Route path="*" element={<NotFound />} />
       </Routes>
       <Toaster richColors position="top-center" />

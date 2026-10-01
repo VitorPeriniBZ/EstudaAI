@@ -23,7 +23,7 @@ export const userRole = pgEnum("user_role", ["user", "admin"]);
 export const materialKind = pgEnum("material_kind", ["pdf", "image", "note"]);
 export const materialStatus = pgEnum("material_status", ["processing", "ready", "error"]);
 export const chatRole = pgEnum("chat_role", ["user", "assistant"]);
-export const aiProviderType = pgEnum("ai_provider_type", ["anthropic", "openai"]);
+export const aiProviderType = pgEnum("ai_provider_type", ["anthropic", "openai", "google"]);
 
 export const users = pgTable("users", {
   id: serial("id").primaryKey(),
@@ -207,6 +207,7 @@ export const aiProviders = pgTable("ai_providers", {
   /**
    * anthropic  → @ai-sdk/anthropic (baseUrl opcional)
    * openai     → qualquer endpoint OpenAI-compatível (baseUrl opcional; padrão api.openai.com)
+   * google     → Google Gemini nativo via @ai-sdk/google (chave do AI Studio)
    */
   type: aiProviderType("type").notNull(),
   baseUrl: varchar("baseUrl", { length: 500 }),

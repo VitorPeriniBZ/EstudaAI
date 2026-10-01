@@ -12,8 +12,11 @@ export function serveStaticFiles(app: App) {
   app.use("*", serveStatic({ root: "./dist/public" }));
 
   app.notFound((c) => {
-    const accept = c.req.header("accept") ?? "";
-    if (!accept.includes("text/html")) {
+    // Rotas do React (/app, /privacidade…) devolvem o index.html; arquivos
+    // inexistentes (com extensão) e /api continuam 404.
+    const p = c.req.path;
+    const looksLikeFile = /\.[a-z0-9]{1,8}$/i.test(p);
+    if (c.req.method !== "GET" || p.startsWith("/api/") || looksLikeFile) {
       return c.json({ error: "Not Found" }, 404);
     }
     const indexPath = path.resolve(distPath, "index.html");

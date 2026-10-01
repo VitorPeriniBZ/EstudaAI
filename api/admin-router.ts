@@ -14,7 +14,7 @@ function maskKey(key: string | null): string | null {
 
 const providerInput = z.object({
   name: z.string().min(1).max(160),
-  type: z.enum(["anthropic", "openai"]),
+  type: z.enum(["anthropic", "openai", "google"]),
   apiKey: z.string().max(2048).optional().or(z.literal("")),
   baseUrl: z.string().url().max(500).optional().or(z.literal("")),
   model: z.string().min(1, "Informe o modelo").max(160),
@@ -27,7 +27,7 @@ const providerInput = z.object({
 const providerUpdateInput = z.object({
   id: z.number(),
   name: z.string().min(1).max(160).optional(),
-  type: z.enum(["anthropic", "openai"]).optional(),
+  type: z.enum(["anthropic", "openai", "google"]).optional(),
   apiKey: z.string().max(2048).optional().or(z.literal("")),
   baseUrl: z.string().url().max(500).optional().or(z.literal("")),
   model: z.string().min(1).max(160).optional(),

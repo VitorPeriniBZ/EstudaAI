@@ -66,7 +66,9 @@ export function classifyAiError(err: unknown): Error {
 
   if (typeof status === "number") {
     if (status === 401 || status === 403) {
-      return new AiUnavailable(`Chave da API inválida ou sem permissão (${status})`);
+      return new AiUnavailable(
+        `Chave da API inválida ou sem permissão (${status})${detail ? `: ${detail}` : ""}`,
+      );
     }
     if (status === 402) return new AiUnavailable("Sem créditos no provedor");
     if (status === 404) return new AiUnavailable(`Modelo não encontrado: ${detail}`);
@@ -76,6 +78,13 @@ export function classifyAiError(err: unknown): Error {
       // a Anthropic devolve 400 quando o crédito acaba
       if (/credit|billing|balance|quota/i.test(detail)) {
         return new AiUnavailable("Sem créditos no provedor");
+      }
+      // Google devolve 400 para chave inválida ("API key not valid")
+      if (/api[ _-]?key|unauthenticated|permission/i.test(detail)) {
+        return new AiUnavailable(`Chave da API inválida: ${detail}`);
+      }
+      if (/model/i.test(detail) && /not found|not supported|invalid|unknown/i.test(detail)) {
+        return new AiUnavailable(`Modelo inválido: ${detail}`);
       }
       return new AiRejected(detail || "Requisição recusada pela IA");
     }

@@ -5,13 +5,17 @@ import { createRouter, authedQuery } from "./middleware";
 import { getDb } from "./queries/connection";
 import { materials } from "../db/schema";
 import { storage, MAX_FILE_BYTES } from "./lib/storage";
+import { messageFor, UserMessages } from "./lib/user-errors";
 import { extractPdfText, extractImageText } from "./ai/generate";
 import { requireSubject } from "./subjects-router";
 
-/** Mensagem amigável para gravar em materials.statusMsg */
-function errorMessage(err: unknown): string {
-  const msg = err instanceof Error ? err.message : String(err);
-  return (msg || "Falha ao processar o arquivo").slice(0, 500);
+/**
+ * Mensagem gravada em materials.statusMsg. Só o dono do material a vê;
+ * se o dono não é admin, gravamos a versão neutra (sem detalhes internos).
+ */
+function errorMessage(err: unknown, isAdmin: boolean): string {
+  if (!isAdmin) console.warn("[materials] falha ao processar:", err instanceof Error ? err.message : err);
+  return messageFor(err, isAdmin, UserMessages.fileProcessing);
 }
 
 async function extractTextFor(
@@ -106,7 +110,7 @@ export const materialsRouter = createRouter({
       } catch (err) {
         await getDb()
           .update(materials)
-          .set({ status: "error", statusMsg: errorMessage(err) })
+          .set({ status: "error", statusMsg: errorMessage(err, ctx.user.role === "admin") })
           .where(eq(materials.id, id));
       }
 
@@ -165,7 +169,7 @@ export const materialsRouter = createRouter({
       } catch (err) {
         await db
           .update(materials)
-          .set({ status: "error", statusMsg: errorMessage(err) })
+          .set({ status: "error", statusMsg: errorMessage(err, ctx.user.role === "admin") })
           .where(eq(materials.id, row.id));
       }
       return db.query.materials.findFirst({ where: eq(materials.id, row.id) });

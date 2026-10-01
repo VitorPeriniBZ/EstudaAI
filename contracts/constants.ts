@@ -5,7 +5,7 @@ export const Session = {
 
 export const ErrorMessages = {
   unauthenticated: "Faça login para continuar",
-  insufficientRole: "Acesso restrito ao administrador",
+  insufficientRole: "Você não tem acesso a esta página.",
 } as const;
 
 export const Paths = {

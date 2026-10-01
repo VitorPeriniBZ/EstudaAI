@@ -112,7 +112,9 @@ export default function Landing() {
 
       <footer className="border-t py-6">
         <p className="text-center text-xs text-muted-foreground">
-          EstudaAí — estude com o seu próprio material.
+          EstudaAí — estude com o seu próprio material. ·{" "}
+          <a href="/privacidade" className="underline">Privacidade</a> ·{" "}
+          <a href="/termos" className="underline">Termos de uso</a>
         </p>
       </footer>
     </div>

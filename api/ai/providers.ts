@@ -8,13 +8,14 @@
  */
 import { createOpenAICompatible } from "@ai-sdk/openai-compatible";
 import { createAnthropic } from "@ai-sdk/anthropic";
+import { createGoogleGenerativeAI } from "@ai-sdk/google";
 import type { LanguageModel } from "ai";
-import { TRPCError } from "@trpc/server";
 import { asc, eq } from "drizzle-orm";
 import { getDb } from "../queries/connection";
 import { aiProviders, type AiProvider } from "../../db/schema";
 import { AiRejected, AiTransient, AiUnavailable, classifyAiError } from "./errors";
 import { env } from "../lib/env";
+import { dualError, UserMessages } from "../lib/user-errors";
 
 interface Candidate {
   name: string;
@@ -25,16 +26,24 @@ interface Candidate {
 function modelForProvider(p: AiProvider): LanguageModel {
   if (!p.apiKey) throw new Error(`Provedor "${p.name}" sem API key`);
   if (!p.model?.trim()) throw new Error(`Provedor "${p.name}" sem modelo`);
+  if (p.type === "google") {
+    // aceita "gemini-2.5-flash" ou "models/gemini-2.5-flash"
+    const model = p.model.trim().replace(/^models\//, "");
+    return createGoogleGenerativeAI({
+      apiKey: p.apiKey.trim(),
+      ...(p.baseUrl ? { baseURL: p.baseUrl } : {}),
+    })(model);
+  }
   if (p.type === "anthropic") {
     return createAnthropic({
-      apiKey: p.apiKey,
+      apiKey: p.apiKey.trim(),
       ...(p.baseUrl ? { baseURL: p.baseUrl } : {}),
     })(p.model);
   }
   return createOpenAICompatible({
     name: `provider-${p.id}`,
     baseURL: p.baseUrl || "https://api.openai.com/v1",
-    apiKey: p.apiKey,
+    apiKey: p.apiKey.trim(),
     includeUsage: true,
     supportsStructuredOutputs: true,
   })(p.model);
@@ -68,12 +77,13 @@ export async function withAiFallback<T>(
   const needVision = opts?.needVision ?? false;
   const list = await candidates(needVision);
   if (list.length === 0) {
-    throw new TRPCError({
-      code: "PRECONDITION_FAILED",
-      message: needVision
-        ? "Nenhuma IA com leitura de imagens está ativa. O administrador precisa cadastrar (ou ativar) um provedor com \"Lê imagens\" no painel Admin → Provedores de IA."
-        : "Nenhuma IA configurada ainda. O administrador precisa cadastrar uma chave em Admin → Provedores de IA.",
-    });
+    throw dualError(
+      "PRECONDITION_FAILED",
+      needVision
+        ? "Nenhuma IA com leitura de imagens está ativa. Cadastre (ou ative) um provedor com \"Lê imagens\" em Admin → Provedores de IA."
+        : "Nenhuma IA configurada ainda. Cadastre uma chave em Admin → Provedores de IA.",
+      needVision ? UserMessages.imageUnavailable : UserMessages.aiUnavailable,
+    );
   }
 
   const failures: string[] = [];
@@ -87,20 +97,21 @@ export async function withAiFallback<T>(
         failures.push(`${c.name}: ${classified.message}`);
         continue;
       }
-      throw new TRPCError({
-        code: "BAD_REQUEST",
-        message: `A IA recusou o pedido: ${classified.message}`,
-        cause: err,
-      });
+      console.warn(`[ai] ${c.name} recusou o pedido: ${classified.message}`);
+      throw dualError(
+        "BAD_REQUEST",
+        `A IA recusou o pedido (${c.name}): ${classified.message}`,
+        UserMessages.aiRejected,
+      );
     }
   }
 
-  throw new TRPCError({
-    code: "SERVICE_UNAVAILABLE",
-    message:
-      `Todas as IAs configuradas falharam (${failures.join(" | ") || "sem detalhes"}). ` +
-      "Tente novamente em instantes ou peça ao administrador para revisar as chaves no painel Admin.",
-  });
+  console.error(`[ai] todas as IAs falharam: ${failures.join(" | ")}`);
+  throw dualError(
+    "SERVICE_UNAVAILABLE",
+    `Todas as IAs configuradas falharam (${failures.join(" | ") || "sem detalhes"}). Revise as chaves em Admin → Provedores de IA.`,
+    UserMessages.aiBusy,
+  );
 }
 
 /** Teste rápido de um provedor salvo (usado pelo painel admin). */
