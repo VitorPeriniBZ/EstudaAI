@@ -72,8 +72,16 @@ export function classifyAiError(err: unknown): Error {
     }
     if (status === 402) return new AiUnavailable("Sem créditos no provedor");
     if (status === 404) return new AiUnavailable(`Modelo não encontrado: ${detail}`);
-    if (status === 429) return new AiTransient("Limite de requisições atingido");
-    if (status === 408 || status >= 500) return new AiTransient(`Serviço instável (${status})`);
+    if (status === 429) {
+      // "limit: 0" = o modelo não tem cota no plano gratuito
+      if (/limit:\s*0\b|free_tier/i.test(detail)) {
+        return new AiUnavailable(`Sem cota gratuita para este modelo (429): ${detail}`);
+      }
+      return new AiTransient(`Limite de requisições atingido (429)${detail ? `: ${detail}` : ""}`);
+    }
+    if (status === 408 || status >= 500) {
+      return new AiTransient(`Serviço instável (${status})${detail ? `: ${detail}` : ""}`);
+    }
     if (status === 400) {
       // a Anthropic devolve 400 quando o crédito acaba
       if (/credit|billing|balance|quota/i.test(detail)) {
@@ -82,6 +90,11 @@ export function classifyAiError(err: unknown): Error {
       // Google devolve 400 para chave inválida ("API key not valid")
       if (/api[ _-]?key|unauthenticated|permission/i.test(detail)) {
         return new AiUnavailable(`Chave da API inválida: ${detail}`);
+      }
+      // recurso que só alguns modelos/provedores suportam → outro provedor pode atender
+      if (/response_format|json_schema|structured output|image|vision|multimodal|content type/i.test(detail) &&
+          /support|allow|invalid|not available|unsupported/i.test(detail)) {
+        return new AiUnavailable(`Recurso não suportado por este modelo: ${detail}`);
       }
       if (/model/i.test(detail) && /not found|not supported|invalid|unknown/i.test(detail)) {
         return new AiUnavailable(`Modelo inválido: ${detail}`);

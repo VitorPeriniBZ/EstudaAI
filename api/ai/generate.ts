@@ -6,6 +6,12 @@ import { generateObject, generateText } from "ai";
 import { z } from "zod";
 import { withAiFallback } from "./providers";
 
+/**
+ * Tentativas extras por provedor. O failover já troca de IA quando uma falha;
+ * repetir muito só gasta a cota (planos grátis têm poucas requisições/minuto).
+ */
+const AI_RETRIES = 1;
+
 /* ---------------- Extração de texto ---------------- */
 
 /** Extrai texto de um PDF (buffer). */
@@ -25,6 +31,7 @@ export async function extractImageText(
   return withAiFallback(
     async (model) => {
       const { text } = await generateText({
+        maxRetries: AI_RETRIES,
         model,
         messages: [
           {
@@ -87,6 +94,7 @@ export async function generateQuizFromContext(
 ): Promise<GeneratedQuiz> {
   return withAiFallback(async (model) => {
     const { object } = await generateObject({
+      maxRetries: AI_RETRIES,
       model,
       schema: quizSchema,
       prompt:
@@ -110,6 +118,7 @@ export async function generateSummaryFromContext(
 ): Promise<string> {
   return withAiFallback(async (model) => {
     const { text } = await generateText({
+        maxRetries: AI_RETRIES,
       model,
       prompt:
         `Você é um professor universitário. Escreva um RESUMO DE ESTUDO completo e bem organizado da matéria "${subjectName}", ` +
@@ -143,6 +152,7 @@ export async function generateFlashcardsFromContext(
 ): Promise<{ front: string; back: string }[]> {
   return withAiFallback(async (model) => {
     const { object } = await generateObject({
+      maxRetries: AI_RETRIES,
       model,
       schema: flashcardsSchema,
       prompt:
@@ -164,6 +174,7 @@ export async function chatReply(
 ): Promise<string> {
   return withAiFallback(async (model) => {
     const { text } = await generateText({
+        maxRetries: AI_RETRIES,
       model,
       system:
         `Você é um tutor da matéria "${subjectName}" ajudando um universitário a estudar. ` +
