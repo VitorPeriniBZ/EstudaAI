@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { plural } from "@/lib/plural";
 import { HelpCircle, Sparkles, Play, Trash2, History, Lock, Crown } from "lucide-react";
 import { MAX_QUIZ_QUESTIONS } from "@contracts/plans";
 import { usePlan } from "@/hooks/usePlan";
@@ -46,7 +47,7 @@ export default function QuizTab({ subjectId }: { subjectId: number }) {
 
   const generate = trpc.study.generateQuiz.useMutation({
     onSuccess: (r) => {
-      toast.success(`Quiz criado com ${r.count} questões`);
+      toast.success(`Quiz criado com ${plural(r.count, "questão", "questões")}`);
       setGenOpen(false);
       utils.study.listQuizzes.invalidate({ subjectId });
       utils.subjects.list.invalidate();
@@ -121,10 +122,10 @@ export default function QuizTab({ subjectId }: { subjectId: number }) {
         <div className="space-y-3">
           {quizList.map((q) => (
             <div key={q.id} className="slide-card">
-              <div className="slide-label">{q.questionCount} questões</div>
+              <div className="slide-label">{plural(q.questionCount, "questão", "questões")}</div>
               <div className="slide-body">
-                <div className="flex items-start justify-between gap-2 pr-9">
-                  <div>
+                <div className="flex items-start justify-between gap-2">
+                  <div className="min-w-0">
                     <h3 className="font-display font-bold text-lg leading-tight">
                       {q.title}
                     </h3>
@@ -149,6 +150,7 @@ export default function QuizTab({ subjectId }: { subjectId: number }) {
                     size="icon"
                     className="h-8 w-8 ml-auto text-muted-foreground hover:text-destructive"
                     title="Excluir quiz"
+                    aria-label="Excluir quiz"
                     onClick={() => setToDelete(q.id)}
                   >
                     <Trash2 className="h-4 w-4" />

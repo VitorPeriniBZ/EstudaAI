@@ -34,7 +34,21 @@ export class AiTooLarge extends Error {
   }
 }
 
-/** Erro terminal (conteúdo recusado, requisição inválida) → não adianta trocar de IA */
+/**
+ * A IA respondeu, mas fora do formato pedido (Groq "json_validate_failed" etc.).
+ * Vale tentar de novo no mesmo provedor uma vez e depois passar para o próximo.
+ */
+export class AiBadOutput extends AiTransient {
+  constructor(message: string) {
+    super(message);
+    this.name = "AiBadOutput";
+  }
+}
+
+/**
+ * Pedido recusado por este provedor (400 sem causa conhecida, política de conteúdo).
+ * A cadeia continua no próximo provedor; só vira erro para o usuário se TODOS recusarem.
+ */
 export class AiRejected extends Error {
   constructor(message: string) {
     super(message);
@@ -113,7 +127,11 @@ export function classifyAiError(err: unknown): Error {
     if (status === 408 || status >= 500) {
       return new AiTransient(`Serviço instável (${status})${detail ? `: ${detail}` : ""}`);
     }
-    if (status === 400) {
+    if (status === 400 || status === 422) {
+      // modelo gerou saída fora do formato (Groq: json_validate_failed / "Failed to generate JSON")
+      if (/json_validate_failed|failed to generate json|output_parse_failed|tool_use_failed|could not parse|invalid json/i.test(detail)) {
+        return new AiBadOutput(`A IA devolveu um formato inválido: ${detail}`);
+      }
       // a Anthropic devolve 400 quando o crédito acaba
       if (/credit|billing|balance|quota/i.test(detail)) {
         return new AiUnavailable("Sem créditos no provedor");
@@ -136,8 +154,8 @@ export function classifyAiError(err: unknown): Error {
   }
 
   // Resposta fora do schema (ex.: JSON inválido no quiz) → outra IA pode acertar
-  if (e.name === "AI_NoObjectGeneratedError" || e.name === "AI_TypeValidationError") {
-    return new AiTransient("A IA devolveu um formato inválido");
+  if (e.name === "AI_NoObjectGeneratedError" || e.name === "AI_TypeValidationError" || e.name === "AI_JSONParseError") {
+    return new AiBadOutput("A IA devolveu um formato inválido");
   }
   // Sem status: rede, timeout, stream interrompido
   return new AiTransient(e.message || "Falha de conexão com a IA");

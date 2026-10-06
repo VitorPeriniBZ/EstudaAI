@@ -58,10 +58,10 @@ export default function Login() {
           <div className="slide-card stain-hema">
             <div className="slide-label">entrar</div>
             <div className="slide-body">
-              <h1 className="font-display font-extrabold text-2xl tracking-tight pr-10">
+              <h1 className="font-display font-extrabold text-2xl tracking-tight">
                 Bem-vindo ao EstudaAí
               </h1>
-              <p className="text-sm text-muted-foreground mt-1 pr-10">
+              <p className="text-sm text-muted-foreground mt-1">
                 Use sua conta Google. Suas matérias e quizzes ficam salvos em
                 qualquer dispositivo.
               </p>

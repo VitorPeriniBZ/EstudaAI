@@ -53,10 +53,10 @@ export default function Landing() {
           <div className="slide-card stain-hema mx-auto max-w-md text-left mb-10">
             <div className="slide-label">sua prova, sem susto</div>
             <div className="slide-body">
-              <p className="font-display font-bold text-lg leading-snug pr-10">
+              <p className="font-display font-bold text-lg leading-snug">
                 De pilha de PDF a quiz pronto em minutos
               </p>
-              <p className="text-sm text-muted-foreground pr-10">
+              <p className="text-sm text-muted-foreground">
                 Resumo + questões + flashcards + tutor
               </p>
             </div>
@@ -87,10 +87,10 @@ export default function Landing() {
                 <div className="slide-label">passo {i + 1}</div>
                 <div className="slide-body">
                   <s.icon className="h-5 w-5 mb-2 text-[var(--stain-ink)]" />
-                  <h2 className="font-display font-bold text-base leading-tight pr-8">
+                  <h2 className="font-display font-bold text-base leading-tight">
                     {s.title}
                   </h2>
-                  <p className="text-sm text-muted-foreground mt-1 pr-8">
+                  <p className="text-sm text-muted-foreground mt-1">
                     {s.text}
                   </p>
                 </div>

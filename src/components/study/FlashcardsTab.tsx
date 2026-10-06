@@ -1,4 +1,5 @@
 import { useMemo, useState } from "react";
+import { plural } from "@/lib/plural";
 import ProDialog from "@/components/plan/ProDialog";
 import { usePlan } from "@/hooks/usePlan";
 import { MAX_FLASHCARDS } from "@contracts/plans";
@@ -42,7 +43,7 @@ export default function FlashcardsTab({ subjectId }: { subjectId: number }) {
 
   const generate = trpc.study.generateFlashcards.useMutation({
     onSuccess: (r) => {
-      toast.success(`${r.count} flashcards criados`);
+      toast.success(`${plural(r.count, "flashcard criado", "flashcards criados")}`);
       setGenOpen(false);
       setDeck(null);
       setPos(0);
@@ -97,7 +98,7 @@ export default function FlashcardsTab({ subjectId }: { subjectId: number }) {
       <div className="flex items-center justify-between gap-3 flex-wrap mb-4">
         <p className="text-sm text-muted-foreground">
           {cards?.length
-            ? `${cards.length} cartões — ${stats.dominado} dominados, ${stats.aprendendo} em aprendizado`
+            ? `${plural(cards.length, "cartão", "cartões")} — ${plural(stats.dominado, "dominado", "dominados")}, ${stats.aprendendo} em aprendizado`
             : "Cartões de revisão gerados pela IA a partir dos seus materiais."}
         </p>
         <div className="flex gap-2">
@@ -262,7 +263,7 @@ export default function FlashcardsTab({ subjectId }: { subjectId: number }) {
             </div>
             {!!cards?.length && (
               <label className="flex items-center justify-between gap-3 text-sm">
-                <span>Substituir os {cards.length} cartões atuais</span>
+                <span>{cards.length === 1 ? "Substituir o cartão atual" : `Substituir os ${cards.length} cartões atuais`}</span>
                 <Switch checked={replace} onCheckedChange={setReplace} />
               </label>
             )}

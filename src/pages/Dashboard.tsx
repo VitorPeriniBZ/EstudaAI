@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { plural } from "@/lib/plural";
 import PlanCard from "@/components/plan/PlanCard";
 import { useNavigate } from "react-router";
 import { Plus, Trash2, FileText, HelpCircle, Layers } from "lucide-react";
@@ -175,8 +176,8 @@ export default function Dashboard() {
             <div className="slide-card stain-giemsa max-w-sm mx-auto text-left mb-6">
               <div className="slide-label">primeira matéria</div>
               <div className="slide-body">
-                <p className="font-display font-bold pr-8">Comece por aqui</p>
-                <p className="text-sm text-muted-foreground pr-8">
+                <p className="font-display font-bold">Comece por aqui</p>
+                <p className="text-sm text-muted-foreground">
                   Crie uma matéria e envie os PDFs da aula
                 </p>
               </div>
@@ -189,54 +190,49 @@ export default function Dashboard() {
           <div className="mt-8 grid gap-4 sm:grid-cols-2">
             {subjects.map((s) => (
               <div key={s.id} className={`slide-card ${stainClass(s.color)} group`}>
-                <div className="slide-label">{s.counts.questions} questões</div>
-                <button
-                  className="slide-body text-left w-full focus:outline-none"
-                  onClick={() => navigate(`/app/materia/${s.id}`)}
-                >
-                  <div className="flex items-start justify-between gap-2 pr-9">
-                    <h2 className="font-display font-bold text-xl leading-tight">
-                      {s.name}
+                <div className="slide-label">{plural(s.counts.questions, "questão", "questões")}</div>
+                <div className="slide-body relative">
+                  <div className="flex items-start justify-between gap-2">
+                    <h2 className="font-display font-bold text-xl leading-tight min-w-0 break-words">
+                      {/* o link cobre o cartão inteiro (área de clique grande, um único foco) */}
+                      <button
+                        className="text-left after:absolute after:inset-0 after:content-[''] focus:outline-none focus-visible:after:ring-2 focus-visible:after:ring-ring focus-visible:after:rounded"
+                        onClick={() => navigate(`/app/materia/${s.id}`)}
+                      >
+                        {s.name}
+                      </button>
                     </h2>
-                    <span
-                      role="button"
-                      tabIndex={0}
+                    <button
+                      type="button"
                       aria-label={`Excluir ${s.name}`}
-                      className="opacity-0 group-hover:opacity-100 focus:opacity-100 transition-opacity text-muted-foreground hover:text-destructive p-1 -m-1 rounded"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        setToDelete(s.id);
-                      }}
-                      onKeyDown={(e) => {
-                        if (e.key === "Enter") {
-                          e.stopPropagation();
-                          setToDelete(s.id);
-                        }
-                      }}
+                      title="Excluir matéria"
+                      className="relative z-[2] shrink-0 rounded p-1 -m-1 text-muted-foreground transition-opacity hover:text-destructive focus-visible:opacity-100 [@media(hover:hover)]:opacity-0 [@media(hover:hover)]:group-hover:opacity-100"
+                      onClick={() => setToDelete(s.id)}
                     >
                       <Trash2 className="h-4 w-4" />
-                    </span>
+                    </button>
+
                   </div>
                   {s.description && (
-                    <p className="text-sm text-muted-foreground mt-0.5 line-clamp-2 pr-8">
+                    <p className="text-sm text-muted-foreground mt-0.5 line-clamp-2">
                       {s.description}
                     </p>
                   )}
-                  <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-xs text-muted-foreground pr-8">
+                  <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-xs text-muted-foreground">
                     <span className="inline-flex items-center gap-1">
                       <FileText className="h-3.5 w-3.5" />
-                      {s.counts.materials} material(is)
+                      {plural(s.counts.materials, "material", "materiais")}
                     </span>
                     <span className="inline-flex items-center gap-1">
                       <HelpCircle className="h-3.5 w-3.5" />
-                      {s.counts.quizzes} quiz(zes)
+                      {plural(s.counts.quizzes, "quiz", "quizzes")}
                     </span>
                     <span className="inline-flex items-center gap-1">
                       <Layers className="h-3.5 w-3.5" />
-                      {s.counts.flashcards} flashcards
+                      {plural(s.counts.flashcards, "flashcard", "flashcards")}
                     </span>
                   </div>
-                </button>
+                </div>
               </div>
             ))}
           </div>

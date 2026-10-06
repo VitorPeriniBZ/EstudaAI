@@ -13,8 +13,9 @@ import type { LanguageModel } from "ai";
 import { asc, eq } from "drizzle-orm";
 import { getDb } from "../queries/connection";
 import { aiProviders, type AiProvider } from "../../db/schema";
-import { AiRejected, AiTooLarge, AiTransient, AiUnavailable, classifyAiError } from "./errors";
+import { AiBadOutput, AiRejected, AiTooLarge, classifyAiError } from "./errors";
 import { env } from "../lib/env";
+import { recordAiEvent } from "./diagnostics";
 import { dualError, UserMessages } from "../lib/user-errors";
 
 interface Candidate {
@@ -68,6 +69,8 @@ async function candidates(needVision: boolean): Promise<Candidate[]> {
 
 /** Opções repassadas a cada tentativa. */
 export interface AiCallOptions {
+  /** nome do provedor desta tentativa (para diagnóstico) */
+  providerName: string;
   /** Fração do material a enviar (1 = tudo). Diminui quando o provedor acusa pedido grande demais. */
   contextFactor: number;
 }
@@ -104,44 +107,44 @@ export async function withAiFallback<T>(
   }
 
   const failures: string[] = [];
+  let rejections = 0;
   for (const c of list) {
     let contextFactor = 1;
-    for (let shrink = 0; ; shrink++) {
-    try {
-      return await fn(c.model, { contextFactor });
-    } catch (err) {
-      const classified = classifyAiError(err);
-      if (classified instanceof AiTooLarge && shrink < MAX_SHRINKS) {
-        contextFactor = nextFactor(contextFactor, classified, shrink);
-        console.warn(
-          `[ai] ${c.name}: pedido grande demais, tentando com ${Math.round(contextFactor * 100)}% do material`,
-        );
-        continue;
-      }
-      if (
-        classified instanceof AiUnavailable ||
-        classified instanceof AiTransient ||
-        classified instanceof AiTooLarge
-      ) {
+    let shrinks = 0;
+    let badOutputRetries = 0;
+    for (;;) {
+      try {
+        return await fn(c.model, { contextFactor, providerName: c.name });
+      } catch (err) {
+        const classified = classifyAiError(err);
+        // pedido grande demais: reduz o material e tenta no mesmo provedor
+        if (classified instanceof AiTooLarge && shrinks < MAX_SHRINKS) {
+          contextFactor = nextFactor(contextFactor, classified, shrinks++);
+          console.warn(`[ai] ${c.name}: pedido grande demais, tentando com ${Math.round(contextFactor * 100)}% do material`);
+          continue;
+        }
+        // saída fora do formato: uma nova tentativa no mesmo provedor costuma resolver
+        if (classified instanceof AiBadOutput && badOutputRetries < 1) {
+          badOutputRetries++;
+          console.warn(`[ai] ${c.name}: ${classified.message} — tentando de novo`);
+          continue;
+        }
+        if (classified instanceof AiRejected) rejections++;
         console.warn(`[ai] ${c.name} falhou, tentando o próximo: ${classified.message}`);
+        recordAiEvent({ provider: c.name, kind: "falhou", message: classified.message });
         failures.push(`${c.name}: ${classified.message}`);
         break;
       }
-      console.warn(`[ai] ${c.name} recusou o pedido: ${classified.message}`);
-      throw dualError(
-        "BAD_REQUEST",
-        `A IA recusou o pedido (${c.name}): ${classified.message}`,
-        UserMessages.aiRejected,
-      );
-    }
     }
   }
 
   console.error(`[ai] todas as IAs falharam: ${failures.join(" | ")}`);
+  recordAiEvent({ provider: "—", kind: "todas falharam", message: failures.join(" | ") || "sem detalhes" });
+  const allRejected = rejections === list.length;
   throw dualError(
-    "SERVICE_UNAVAILABLE",
+    allRejected ? "BAD_REQUEST" : "SERVICE_UNAVAILABLE",
     `Todas as IAs configuradas falharam (${failures.join(" | ") || "sem detalhes"}). Revise as chaves em Admin → Provedores de IA.`,
-    UserMessages.aiBusy,
+    allRejected ? UserMessages.aiRejected : UserMessages.aiBusy,
   );
 }
 

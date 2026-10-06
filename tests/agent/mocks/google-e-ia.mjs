@@ -32,8 +32,29 @@ let calls = { fail: 0, ok: 0 };
 http.createServer(async (req, res) => {
   if (req.url === "/stats") return res.end(JSON.stringify(calls));
   const raw = await body(req);
-  const which = req.url.startsWith("/fail") ? "fail" : "ok";
-  calls[which]++;
+  // /badjson → erro do Groq quando o modelo erra o formato; /flaky → erra 1x e depois acerta;
+  // /reject → recusa genérica (400); /badkey → chave inválida (401)
+  const route = req.url.split("/")[1];
+  calls[route] = (calls[route] || 0) + 1;
+  const wantsStructured = raw.includes('"response_format"');
+  // /nostructured → provedor que não aceita response_format (como alguns modelos)
+  if (route === "nostructured" && wantsStructured) {
+    res.statusCode = 400; res.setHeader("content-type", "application/json");
+    return res.end(JSON.stringify({ error: { message: "response_format `json_schema` is not supported with this model", type: "invalid_request_error" } }));
+  }
+  if ((route === "badjson" && wantsStructured) || (route === "flaky" && calls[route] % 2 === 1)) {
+    res.statusCode = 400; res.setHeader("content-type", "application/json");
+    return res.end(JSON.stringify({ error: { message: "Failed to generate JSON. Please adjust your prompt. See 'failed_generation' for more details.", type: "invalid_request_error", code: "json_validate_failed" } }));
+  }
+  if (route === "reject") {
+    res.statusCode = 400; res.setHeader("content-type", "application/json");
+    return res.end(JSON.stringify({ error: { message: "The request was rejected by the content policy.", type: "invalid_request_error" } }));
+  }
+  if (route === "badkey") {
+    res.statusCode = 401; res.setHeader("content-type", "application/json");
+    return res.end(JSON.stringify({ error: { message: "API key is invalid.", type: "authentication_error" } }));
+  }
+  const which = route === "fail" ? "fail" : "ok";
   if (which === "fail") { res.statusCode = 429; res.setHeader("content-type","application/json");
     return res.end(JSON.stringify({ error: { message: "rate limited", type: "rate_limit" } })); }
   const j = JSON.parse(raw);
@@ -65,6 +86,14 @@ http.createServer(async (req, res) => {
   } else if (schema?.properties?.cards) {
     const n = Number((allText.match(/exatamente (\d+) flashcards/)||[])[1] || 5);
     content = JSON.stringify({ cards: Array.from({length:n},(_,i)=>({ front:`Termo ${i+1}`, back:`Definição ${i+1}` })) });
+  } else if (allText.includes("Responda SOMENTE com um objeto JSON")) {
+    // modo texto: o modelo responde com o JSON entre crases e uma frase antes
+    const n = Number((allText.match(/exatamente (\d+) (quest|flashcards)/) || [])[1] || 5);
+    const obj = allText.includes("flashcards de estudo")
+      ? { cards: Array.from({ length: n }, (_, i) => ({ front: `Termo ${i + 1}`, back: `Definição ${i + 1}` })) }
+      : { title: "Quiz (texto)", topics: ["Ascaris", "Enterobius"], questions: Array.from({ length: n }, (_, i) => ({
+          topic: i % 2 ? "Enterobius" : "Ascaris", question: `Pergunta ${i + 1}?`, options: ["A", "B", "C", "D"], answerIndex: i % 4, explanation: "Porque sim." })) };
+    content = "Claro! Aqui está o resultado:\n```json\n" + JSON.stringify(obj, null, 2) + "\n```";
   } else if (allText.includes("image_url")) {
     content = "Texto transcrito da imagem: ciclo do Ascaris lumbricoides no intestino delgado.";
   } else if (allText.includes("RESUMO DE ESTUDO")) {

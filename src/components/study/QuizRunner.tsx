@@ -1,4 +1,5 @@
 import { useMemo, useState } from "react";
+import { plural } from "@/lib/plural";
 import { Trophy } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { trpc } from "@/providers/trpc";
@@ -146,7 +147,7 @@ function QuizRunnerInner({
         </div>
         <p className="text-sm text-muted-foreground mt-3">
           {filteredCount
-            ? `${filteredCount} questões selecionadas`
+            ? plural(filteredCount, "questão selecionada", "questões selecionadas")
             : "Selecione pelo menos um tema"}
         </p>
         <div className="mt-4 flex gap-2 flex-wrap">
@@ -187,7 +188,7 @@ function QuizRunnerInner({
         <div className="mt-5 flex gap-2 flex-wrap">
           {wrong.length > 0 && (
             <Button onClick={() => start(wrong.map((w) => w.q))}>
-              Refazer as {wrong.length} errada(s)
+              {wrong.length === 1 ? "Refazer a errada" : `Refazer as ${wrong.length} erradas`}
             </Button>
           )}
           <Button variant="outline" onClick={() => setPhase("setup")}>
@@ -242,7 +243,7 @@ function QuizRunnerInner({
           <span className="font-semibold text-amber-600 dark:text-amber-400">🔥 {streak} seguidas</span>
         )}
         <span>
-          {hits} acerto{hits === 1 ? "" : "s"}
+          {plural(hits, "acerto", "acertos")}
         </span>
       </div>
 

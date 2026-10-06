@@ -7,6 +7,7 @@ import { aiProviders, materials, subjects, usageEvents, users } from "../db/sche
 import { dayStart, monthStart } from "./lib/plans";
 import { GENERATION_KINDS } from "@contracts/plans";
 import { testProvider } from "./ai/providers";
+import { recentAiEvents } from "./ai/diagnostics";
 
 function maskKey(key: string | null): string | null {
   if (!key) return null;
@@ -107,6 +108,9 @@ export const adminRouter = createRouter({
       if (!row) throw new TRPCError({ code: "NOT_FOUND", message: "Usuário não encontrado" });
       return { ok: true };
     }),
+
+  /** Últimas falhas das IAs (memória do servidor). */
+  recentAiEvents: adminQuery.query(() => recentAiEvents()),
 
   /* ---------------- Provedores de IA ---------------- */
 

@@ -1,4 +1,5 @@
 import { useParams, useNavigate } from "react-router";
+import { plural } from "@/lib/plural";
 import { ArrowLeft, FileUp, BookOpen, HelpCircle, Layers, MessageCircleQuestion } from "lucide-react";
 import { trpc } from "@/providers/trpc";
 import { useAuth } from "@/hooks/useAuth";
@@ -58,13 +59,13 @@ export default function SubjectPage() {
         </button>
 
         <div className="slide-card mb-6">
-          <div className="slide-label">{subject.counts.questions} questões geradas</div>
+          <div className="slide-label">{plural(subject.counts.questions, "questão gerada", "questões geradas")}</div>
           <div className="slide-body">
-            <h1 className="font-display font-extrabold text-2xl sm:text-3xl leading-tight pr-10">
+            <h1 className="font-display font-extrabold text-2xl sm:text-3xl leading-tight">
               {subject.name}
             </h1>
             {subject.description && (
-              <p className="text-sm text-muted-foreground pr-10 mt-0.5">
+              <p className="text-sm text-muted-foreground mt-0.5">
                 {subject.description}
               </p>
             )}

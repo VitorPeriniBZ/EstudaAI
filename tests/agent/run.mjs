@@ -68,6 +68,11 @@ if (!fs.existsSync(path.join(ROOT, "dist", "boot.js")) || process.env.AGENT_BUIL
 }
 
 /* ---------- 2. servidores falsos ---------- */
+// portas ocupadas por outro processo fariam o agente conversar com o servidor errado
+for (const port of [4001, 4002, 4003, 4004, PORT]) {
+  const busy = await fetch(`http://localhost:${port}/`).then(() => true, () => false);
+  if (busy) die(`a porta ${port} já está em uso por outro programa. Feche-o (ou rode outro agente que ficou aberto) e tente de novo.`);
+}
 const mockEnv = { AGENT_BASE_URL: BASE };
 start("node", [path.join(HERE, "mocks", "google-e-ia.mjs")], mockEnv, "mock google/ia");
 start("node", [path.join(HERE, "mocks", "gemini.mjs")], mockEnv, "mock gemini");
@@ -116,7 +121,7 @@ for (const s of suites) {
   results.push({ name: s.name, ok: okN, fail: failN, passed, skipped, secs: ((Date.now() - t0) / 1000).toFixed(1) });
   const tag = skipped ? c.d("PULADO") : passed ? c.g("OK    ") : c.r("FALHOU");
   console.log(`${tag}  ${s.name.padEnd(18)} ${String(okN).padStart(3)} ok  ${failN ? c.r(failN + " falha(s)") : ""} ${c.d(results.at(-1).secs + "s")}`);
-  if (!passed) console.log(out.split("\n").filter((l) => /✘|Error|erro/i.test(l)).map((l) => "        " + l).join("\n"));
+  if (!passed) console.log(process.env.AGENT_VERBOSE ? out : out.split("\n").filter((l) => /✘|Error|erro|^      /i.test(l)).map((l) => "        " + l).join("\n"));
   else if (skipped) console.log(c.d(out.split("\n").find((l) => l.includes("–")) || ""));
 }
 await sql.end();

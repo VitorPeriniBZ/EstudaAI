@@ -2,9 +2,11 @@
  * Pipeline de IA do EstudaAí — extração de texto, quiz, resumo, flashcards e chat.
  * Todas as chamadas passam pela cadeia de provedores com fallback (api/ai/providers.ts).
  */
-import { generateObject, generateText } from "ai";
+import { generateObject, generateText, zodSchema, type LanguageModel } from "ai";
 import { z } from "zod";
 import { withAiFallback } from "./providers";
+import { AiBadOutput, AiRejected, AiUnavailable, classifyAiError } from "./errors";
+import { recordAiEvent } from "./diagnostics";
 
 /**
  * Tentativas extras por provedor. O failover já troca de IA quando uma falha;
@@ -209,15 +211,82 @@ export function normalizeQuiz(raw: z.infer<typeof quizSchema>, count: number): G
   };
 }
 
+/** Pega o JSON de uma resposta em texto (aceita ```json ... ``` e texto em volta). */
+export function extractJson(text: string): unknown {
+  const fenced = text.match(/```(?:json)?\s*([\s\S]*?)```/i);
+  const body = (fenced ? fenced[1] : text).trim();
+  const start = body.indexOf("{"), end = body.lastIndexOf("}");
+  if (start < 0 || end <= start) throw new Error("sem objeto JSON na resposta");
+  return JSON.parse(body.slice(start, end + 1));
+}
+
+/**
+ * Pede uma resposta no formato do esquema.
+ * 1º tenta o modo estruturado do provedor (json_schema / responseSchema).
+ * Se o provedor recusar esse modo ou errar o formato, pede à MESMA IA o JSON como
+ * texto comum, com o esquema no próprio pedido, e valida aqui. Funciona com qualquer
+ * modelo — só falha de vez se a IA não conseguir nem assim.
+ * Erros de chave, cota, limite e rede sobem direto para a cadeia de failover.
+ */
+export async function generateStructured<T>(opts: {
+  model: LanguageModel;
+  schema: z.ZodType<T>;
+  system: string;
+  prompt: string;
+  providerName?: string;
+}): Promise<T> {
+  try {
+    const { object } = await generateObject({
+      maxRetries: AI_RETRIES,
+      model: opts.model,
+      schema: opts.schema,
+      system: opts.system,
+      prompt: opts.prompt,
+    });
+    return object;
+  } catch (err) {
+    const c = classifyAiError(err);
+    const structuredProblem =
+      c instanceof AiBadOutput ||
+      c instanceof AiRejected ||
+      (c instanceof AiUnavailable && /Recurso não suportado/.test(c.message));
+    if (!structuredProblem) throw err;
+    console.warn(`[ai] modo estruturado falhou (${c.message.slice(0, 160)}) — pedindo JSON em texto`);
+    recordAiEvent({ provider: opts.providerName ?? "?", kind: "plano B", message: c.message });
+  }
+  const jsonSchema = JSON.stringify(zodSchema(opts.schema).jsonSchema);
+  const { text } = await generateText({
+    maxRetries: AI_RETRIES,
+    model: opts.model,
+    system:
+      opts.system +
+      "\n\nResponda SOMENTE com um objeto JSON válido, sem nenhum texto antes ou depois, " +
+      "seguindo exatamente este JSON Schema (todos os campos são obrigatórios):\n" +
+      jsonSchema,
+    prompt: opts.prompt,
+  });
+  let data: unknown;
+  try {
+    data = extractJson(text);
+  } catch (e) {
+    throw new AiBadOutput(`A IA não devolveu JSON: ${(e as Error).message}`);
+  }
+  const parsed = opts.schema.safeParse(data);
+  if (!parsed.success) {
+    throw new AiBadOutput(`JSON fora do esquema: ${parsed.error.issues.slice(0, 3).map((i) => `${i.path.join(".")}: ${i.message}`).join("; ")}`);
+  }
+  return parsed.data;
+}
+
 export async function generateQuizFromContext(
   context: string,
   subjectName: string,
   count: number,
 ): Promise<GeneratedQuiz> {
-  return withAiFallback(async (model, { contextFactor }) => {
-    const { object } = await generateObject({
-      maxRetries: AI_RETRIES,
+  return withAiFallback(async (model, { contextFactor, providerName }) => {
+    const object = await generateStructured({
       model,
+      providerName,
       schema: quizSchema,
       system:
         "Você gera quizzes educacionais em JSON seguindo rigorosamente o formato pedido. " +
@@ -270,11 +339,12 @@ export async function generateFlashcardsFromContext(
   subjectName: string,
   count: number,
 ): Promise<{ front: string; back: string }[]> {
-  return withAiFallback(async (model, { contextFactor }) => {
-    const { object } = await generateObject({
-      maxRetries: AI_RETRIES,
+  return withAiFallback(async (model, { contextFactor, providerName }) => {
+    const object = await generateStructured({
       model,
+      providerName,
       schema: flashcardsSchema,
+      system: "Você cria flashcards de estudo em JSON seguindo rigorosamente o formato pedido.",
       prompt:
         `Você é um professor universitário criando flashcards de revisão sobre "${subjectName}".\n` +
         `Com base EXCLUSIVA no material abaixo, crie exatamente ${count} flashcards em português.\n` +

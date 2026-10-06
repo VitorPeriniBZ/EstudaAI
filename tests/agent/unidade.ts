@@ -1,6 +1,7 @@
 // Testes de unidade (rodam com tsx): esquema estrito, quiz e Markdown
 import { zodSchema } from "ai";
-import { quizSchema, flashcardsSchema, normalizeQuiz, topicTarget } from "../../api/ai/generate";
+import { quizSchema, flashcardsSchema, normalizeQuiz, topicTarget, extractJson } from "../../api/ai/generate";
+import { classifyAiError, AiBadOutput, AiRejected, AiTooLarge } from "../../api/ai/errors";
 import { normalizeMarkdown } from "../../src/lib/markdown";
 let pass = 0, fail = 0;
 const ok = (c: boolean, n: string, x = "") => { if (c) { pass++; console.log("  ✔", n); } else { fail++; console.log("  ✘", n, x); } };
@@ -41,6 +42,19 @@ ok(q.questions[0].options[0] === "Jejuno" && q.questions[1].options[0] === "p", 
 ok(q.questions[0].topic === "Ascaris lumbricoides" && q.questions[1].topic === "Enterobius vermicularis", "prende ao tema declarado");
 ok(q.questions[2].topic === "Outros temas", "sem correspondência vai para Outros temas");
 ok(topicTarget(10) === 3 && topicTarget(25) === 6 && topicTarget(50) === 8, "quantidade de temas por tamanho do quiz");
+
+console.log("\nClassificação de erros das IAs");
+const mk = (statusCode: number, message: string) => ({ name: "AI_APICallError", statusCode, message, responseBody: JSON.stringify({ error: { message } }) });
+ok(classifyAiError(mk(400, "Failed to generate JSON. Please adjust your prompt.")) instanceof AiBadOutput, "Groq json_validate_failed → tentar de novo");
+ok(classifyAiError({ name: "AI_NoObjectGeneratedError", message: "x" }) instanceof AiBadOutput, "objeto fora do esquema → tentar de novo");
+ok(classifyAiError(mk(400, "rejected by content policy")) instanceof AiRejected, "400 genérico → recusa deste provedor (cadeia continua)");
+ok(classifyAiError(mk(413, "Request too large ... Limit 8000, Requested 17797")) instanceof AiTooLarge, "413 → reduzir material");
+
+console.log("\nPlano B: JSON em texto");
+ok((extractJson("Claro!\n```json\n{\"a\":1}\n```") as any).a === 1, "extrai JSON entre crases");
+ok((extractJson("Aqui: {\"a\":{\"b\":2}} pronto") as any).a.b === 2, "extrai JSON no meio do texto");
+let threw = false; try { extractJson("sem json aqui"); } catch { threw = true; }
+ok(threw, "texto sem JSON é recusado");
 
 console.log("\nMarkdown");
 ok(normalizeMarkdown("| a | b<br>c |") === "| a | b · c |", "<br> dentro de tabela vira separador");

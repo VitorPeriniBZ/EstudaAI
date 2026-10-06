@@ -41,3 +41,4 @@ coverage/
 
 # relatório do agente de testes
 tests/agent/relatorio.json
+tests/agent/auditoria/

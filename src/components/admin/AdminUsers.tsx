@@ -1,4 +1,5 @@
 import { useMemo, useState } from "react";
+import { plural } from "@/lib/plural";
 import { Crown, Search, ShieldCheck, User as UserIcon } from "lucide-react";
 import { toast } from "sonner";
 import { trpc } from "@/providers/trpc";
@@ -72,7 +73,7 @@ export default function AdminUsers() {
     <div className="mt-6">
       <div className="flex flex-wrap items-center gap-3 justify-between">
         <p className="text-sm text-muted-foreground">
-          {totals.all} usuário(s) · {totals.pro} PRO · {totals.admins} admin(s)
+          {plural(totals.all, "usuário", "usuários")} · {totals.pro} PRO · {plural(totals.admins, "admin", "admins")}
         </p>
         <div className="relative w-full sm:w-64">
           <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
@@ -150,8 +151,8 @@ export default function AdminUsers() {
                   </div>
                 </div>
                 <p className="mt-2 text-xs text-muted-foreground">
-                  {u.subjects} matéria(s) · {u.files} arquivo(s) · {u.generationsThisMonth}
-                  {u.plan === "free" && u.role !== "admin" ? `/${limit}` : ""} geração(ões) este mês ·
+                  {plural(u.subjects, "matéria", "matérias")} · {plural(u.files, "arquivo", "arquivos")} · {u.generationsThisMonth}
+                  {u.plan === "free" && u.role !== "admin" ? `/${limit}` : ""} {u.generationsThisMonth === 1 && !(u.plan === "free" && u.role !== "admin") ? "geração" : "gerações"} este mês ·
                   entrou em {fmtDate(u.createdAt)} · último acesso {fmtDate(u.lastSignInAt)}
                 </p>
               </li>

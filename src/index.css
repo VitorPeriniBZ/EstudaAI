@@ -141,7 +141,9 @@
   letter-spacing: 0.04em;
 }
 .dark .slide-card .slide-label { color: #131a1f; }
-.slide-card .slide-body { position: relative; padding: 0.85rem 1rem; }
+/* o lado direito fica reservado para o círculo decorativo: nada (título,
+   botões, lixeira) pode ocupar essa faixa */
+.slide-card .slide-body { position: relative; padding: 0.85rem 4.1rem 0.85rem 1rem; min-width: 0; }
 .slide-card .slide-body::after {
   content: "";
   position: absolute;

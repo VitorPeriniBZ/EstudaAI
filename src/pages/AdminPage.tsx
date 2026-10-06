@@ -1,4 +1,5 @@
 import { useState } from "react";
+import AiEvents from "@/components/admin/AiEvents";
 import AdminUsers from "@/components/admin/AdminUsers";
 import NotFound from "./NotFound";
 import {
@@ -339,6 +340,7 @@ export default function AdminPage() {
             </p>
           </div>
         )}
+        <AiEvents />
         </>
         )}
       </main>

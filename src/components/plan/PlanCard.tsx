@@ -24,10 +24,10 @@ export default function PlanCard() {
 
   if (isPro) {
     return (
-      <div className="mt-6 rounded-lg border bg-card px-4 py-3 flex items-center gap-2 text-sm">
-        <Crown className="h-4 w-4 text-amber-500" />
+      <div className="mt-6 rounded-lg border bg-card px-4 py-3 flex flex-wrap items-center gap-x-2 gap-y-1 text-sm">
+        <Crown className="h-4 w-4 shrink-0 text-amber-500" />
         <span className="font-semibold">Plano PRO</span>
-        <span className="text-muted-foreground">· arquivos, gerações, resumos e chat sem limite · quiz até {data.limits.maxQuizQuestions} questões · flashcards até {data.limits.maxFlashcards}</span>
+        <span className="min-w-0 text-muted-foreground">· arquivos, gerações, resumos e chat sem limite · quiz até {data.limits.maxQuizQuestions} questões · flashcards até {data.limits.maxFlashcards}</span>
       </div>
     );
   }
