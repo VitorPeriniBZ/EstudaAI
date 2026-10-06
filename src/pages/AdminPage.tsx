@@ -134,9 +134,16 @@ export default function AdminPage() {
     onError: (e) => toast.error(e.message),
   });
   const test = trpc.admin.testProvider.useMutation({
-    onSuccess: (r) => {
-      if (r.ok) toast.success(`Provedor respondeu — ${r.message}`);
-      else toast.error(`Falha no teste: ${r.message}`);
+    onSuccess: (r, vars) => {
+      // o teste avalia SÓ este provedor (sem passar para os outros): o aviso diz qual é
+      const name = providers?.find((p) => p.id === vars.id)?.name ?? "provedor";
+      if (r.ok) toast.success(`Teste de “${name}”: respondeu — ${r.message}`);
+      else
+        toast.error(`Teste de “${name}” falhou: ${r.message}`, {
+          description:
+            "O teste verifica só esta IA. Nas gerações dos alunos, o app passa automaticamente para a próxima da lista.",
+          duration: 9000,
+        });
       setTesting(null);
       invalidate();
     },
