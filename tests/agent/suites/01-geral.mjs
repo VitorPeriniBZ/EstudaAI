@@ -125,6 +125,20 @@ await trpc(A, "admin.updateProvider", { id: p2.data.id, vision: true });
 const re = await trpc(A, "materials.reprocess", { id: img1.data.id });
 ok(re.data?.status === "ready" && re.data.textContent.includes("Ascaris"), "reprocessar imagem com IA de visão", JSON.stringify(re.error ?? re.data?.statusMsg));
 
+// trocar o destino exige a chave de novo (senão a chave salva iria para um servidor qualquer ao clicar em "Testar")
+const p3 = await trpc(A, "admin.createProvider", { name: "Destino", type: "openai", apiKey: "sk-destino-123456", baseUrl: "http://localhost:4002/ok/v1", model: "m3", priority: 50, enabled: false });
+const semChave = await trpc(A, "admin.updateProvider", { id: p3.data.id, baseUrl: "http://localhost:4002/fail/v1" });
+ok(semChave.error?.data?.code === "BAD_REQUEST" && /API key/.test(semChave.error.message), "trocar a Base URL sem a chave é recusado", JSON.stringify(semChave.error?.message));
+const tipoSemChave = await trpc(A, "admin.updateProvider", { id: p3.data.id, type: "anthropic", baseUrl: "" });
+ok(tipoSemChave.error?.data?.code === "BAD_REQUEST", "trocar o tipo sem a chave é recusado");
+const p3Depois = (await trpc(A, "admin.listProviders", undefined, true)).data.find(p => p.id === p3.data.id);
+ok(p3Depois.baseUrl === "http://localhost:4002/ok/v1" && p3Depois.type === "openai", "o provedor continua com o destino original", JSON.stringify(p3Depois));
+const comoPainel = await trpc(A, "admin.updateProvider", { id: p3.data.id, name: "Destino 2", type: "openai", apiKey: "", baseUrl: "http://localhost:4002/ok/v1", model: "m3", vision: false, priority: 50, enabled: false });
+ok(comoPainel.data?.ok === true, "editar só o nome (o painel reenvia a mesma Base URL) não pede a chave", JSON.stringify(comoPainel.error?.message));
+const comChave = await trpc(A, "admin.updateProvider", { id: p3.data.id, baseUrl: "http://localhost:4002/fail/v1", apiKey: "sk-nova-123456789" });
+ok(comChave.data?.ok === true, "trocar a Base URL informando a chave funciona", JSON.stringify(comChave.error?.message));
+await trpc(A, "admin.deleteProvider", { id: p3.data.id });
+
 console.log("\n6. Exclusões e logout");
 ok((await trpc(A, "materials.remove", { id: up.data.id })).data?.ok, "excluir material");
 ok((await fetch(B + fu.data.url, { headers: { cookie: A } })).status === 404, "arquivo apagado junto");

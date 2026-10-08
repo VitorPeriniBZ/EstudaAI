@@ -32,4 +32,9 @@ export const env = {
   /** Chave da Anthropic para cadastrar o provedor de IA no primeiro start (opcional) */
   anthropicApiKey: process.env.ANTHROPIC_API_KEY ?? "",
   anthropicModel: process.env.ANTHROPIC_MODEL || "claude-sonnet-5",
+  /**
+   * Libera Base URL de provedor em localhost/rede privada. Só para o agente de testes
+   * (servidores falsos em localhost) — NUNCA defina em produção. Desligado sem a variável.
+   */
+  allowPrivateBaseUrl: process.env.AI_ALLOW_PRIVATE_BASEURL === "1",
 };

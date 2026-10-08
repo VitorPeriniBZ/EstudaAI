@@ -5,6 +5,9 @@ import { classifyAiError, AiBadOutput, AiRejected, AiTooLarge, AiTransient, AiUn
 import { normalizeMarkdown } from "../../src/lib/markdown";
 import { healthRoutes } from "../../api/lib/health";
 import { safeNext } from "../../api/auth/google";
+import { roleForNewUser } from "../../api/queries/users";
+import { checkProviderBaseUrl, isPrivateIp, literalBaseUrlProblem } from "../../api/ai/base-url";
+import { env } from "../../api/lib/env";
 let pass = 0, fail = 0;
 const ok = (c: boolean, n: string, x = "") => { if (c) { pass++; console.log("  ✔", n); } else { fail++; console.log("  ✘", n, x); } };
 
@@ -95,4 +98,32 @@ for (const v of ["/\\exemplo.invalid", "//evil.com", "/\u0000x", "/\t/evil.com",
   ok(safeNext(v) === "/app", `recusa ${JSON.stringify(v)}`, safeNext(v));
 }
 ok(safeNext("/app/materia/12?aba=quiz") === "/app/materia/12?aba=quiz", "aceita caminho interno");
+
+console.log("\nAdmin: primeiro usuário e ADMIN_EMAILS");
+ok(roleForNewUser("ana@x.com", true, []) === "admin", "sem ADMIN_EMAILS, o primeiro usuário vira admin");
+ok(roleForNewUser("intruso@x.com", true, ["dono@x.com"]) === "user", "com ADMIN_EMAILS, o primeiro usuário NÃO vira admin");
+ok(roleForNewUser(null, true, ["dono@x.com"]) === "user", "com ADMIN_EMAILS, primeiro usuário sem e-mail verificado NÃO vira admin");
+ok(roleForNewUser("Dono@X.com", false, ["dono@x.com"]) === "admin", "e-mail de ADMIN_EMAILS vira admin (sem diferenciar maiúsculas)");
+ok(roleForNewUser("bia@x.com", false, []) === "user", "demais usuários são comuns");
+
+console.log("\nBase URL dos provedores (rede interna bloqueada)");
+ok(process.env.AI_ALLOW_PRIVATE_BASEURL === undefined && env.allowPrivateBaseUrl === false,
+  "sem AI_ALLOW_PRIVATE_BASEURL a liberação fica desligada (padrão)", String(process.env.AI_ALLOW_PRIVATE_BASEURL));
+ok((await checkProviderBaseUrl("http://localhost:4002/ok/v1")) !== null, "localhost é recusado sem a flag");
+for (const u of ["http://127.0.0.1:8080/v1", "http://2130706433/v1", "http://[::1]/v1", "http://[::ffff:127.0.0.1]/v1",
+  "http://169.254.169.254/latest/meta-data", "http://10.0.0.5/v1", "http://172.20.0.1/v1", "http://192.168.1.10/v1",
+  "http://[fd00::1]/v1", "http://api.localhost/v1", "http://metadata.google.internal/v1"]) {
+  ok((await checkProviderBaseUrl(u, { allowPrivate: false })) !== null, `recusa ${u}`);
+}
+ok((await checkProviderBaseUrl("https://interno.exemplo.com/v1", { allowPrivate: false, resolve: async () => ["10.1.2.3"] })) !== null,
+  "recusa domínio que resolve para IP privado");
+ok((await checkProviderBaseUrl("https://api.groq.com/openai/v1", { allowPrivate: false, resolve: async () => ["104.18.2.161"] })) === null,
+  "aceita domínio público");
+ok((await checkProviderBaseUrl("https://8.8.8.8/v1", { allowPrivate: false })) === null, "aceita IP público");
+ok((await checkProviderBaseUrl("file:///etc/passwd", { allowPrivate: false })) !== null, "recusa protocolo que não é http(s)");
+ok((await checkProviderBaseUrl("http://localhost:4002/ok/v1", { allowPrivate: true })) === null, "com a flag (só nos testes) localhost é aceito");
+ok(literalBaseUrlProblem("http://localhost:4002/v1", false) !== null && literalBaseUrlProblem("http://localhost:4002/v1", true) === null,
+  "provedor já salvo com localhost é ignorado na hora de usar (sem a flag)");
+ok(literalBaseUrlProblem("https://api.groq.com/openai/v1", false) === null && literalBaseUrlProblem(null, false) === null, "Base URL pública ou vazia é usada");
+ok(!isPrivateIp("8.8.8.8") && !isPrivateIp("2606:4700::1111") && isPrivateIp("fe80::1"), "classificação de IPs públicos e privados");
 console.log(`\n${pass} ok, ${fail} falhas`); process.exit(fail ? 1 : 0);

@@ -26,7 +26,7 @@ ok(st[0].tokens < 12000, "duplicata ignorada (primeiro envio já sem a cópia)",
 ok(st.length>=2 && st.at(-1).tokens <= 8000, "segunda tentativa coube no limite");
 
 console.log("\nProvedor que nunca comporta → passa para o próximo");
-await t(A,"admin.updateProvider",{id:p.data.id, baseUrl:"http://localhost:4004/tiny/v1"});
+await t(A,"admin.updateProvider",{id:p.data.id, baseUrl:"http://localhost:4004/tiny/v1", apiKey:"gsk_test"}); // trocar a Base URL exige a chave
 await t(A,"admin.createProvider",{name:"Reserva",type:"openai",apiKey:"sk-ok-1234567",baseUrl:"http://localhost:4002/ok/v1",model:"m",priority:5});
 const q2 = await t(A,"study.generateQuiz",{subjectId:s,count:5});
 ok(q2.data?.count===5, "quiz gerado pela reserva (failover após 'too large')", JSON.stringify(q2.error?.message));

@@ -40,9 +40,12 @@ npm start                 # serve o site (dist/public) + API na mesma porta
 | `APP_URL` | não | URL pública sem barra final. No Render usa `RENDER_EXTERNAL_URL` automaticamente; defina se usar domínio próprio. Local: `http://localhost:3000` |
 | `ANTHROPIC_API_KEY` | não | Se existir, cadastra o provedor Anthropic no primeiro start |
 | `ANTHROPIC_MODEL` | não | Modelo desse cadastro automático (padrão `claude-sonnet-5`) |
-| `ADMIN_EMAILS` | não | E-mails extras que viram admin (separados por vírgula) |
+| `ADMIN_EMAILS` | recomendado | E-mails que viram admin (separados por vírgula) |
 
-> O **primeiro usuário** que entrar vira **admin** e acessa `/app/admin` (provedores de IA).
+> Com `ADMIN_EMAILS` definido, só esses e-mails viram **admin** e acessam `/app/admin`
+> (provedores de IA). Se a variável ficar vazia, o **primeiro usuário** que entrar vira admin.
+> Defina a variável em produção: assim, quem chegar primeiro a um banco novo ou zerado não
+> ganha o painel.
 
 ---
 
@@ -125,7 +128,7 @@ Use **Testar** e gere um quiz para confirmar.
 1. Copie a URL gerada (ex.: `https://estudaai.onrender.com`) e confirme que
    `https://estudaai.onrender.com/api/auth/google/callback` está nos URIs do Google.
 2. Abra `/api/health` e `/api/health/db`. As duas devem mostrar `{"ok":true}`; a segunda confirma a conexão com o banco.
-3. Entre com o Google (a primeira conta vira admin).
+3. Entre com o Google usando um e-mail de `ADMIN_EMAILS`. Sem essa variável, a primeira conta vira admin.
 4. Se não definiu `ANTHROPIC_API_KEY`, vá em **Admin → Provedores de IA** e cadastre uma chave.
 5. Teste: criar matéria → enviar PDF → gerar quiz → chat.
 

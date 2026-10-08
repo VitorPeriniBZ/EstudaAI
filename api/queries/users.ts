@@ -16,10 +16,21 @@ type GoogleProfile = {
 };
 
 /**
- * Cria ou atualiza o usuário que entrou com o Google.
- * - O PRIMEIRO usuário do site vira "admin" (acessa o painel de IAs).
- * - E-mails listados em ADMIN_EMAILS também viram admin.
+ * Papel de um usuário novo.
+ * - E-mails listados em ADMIN_EMAILS viram admin.
+ * - O PRIMEIRO usuário do site só vira admin quando ADMIN_EMAILS está vazio: com a lista
+ *   definida, quem entrar primeiro num banco novo (ou zerado) não ganha o painel de IAs.
  */
+export function roleForNewUser(
+  email: string | null,
+  isFirstUser: boolean,
+  adminEmails: string[],
+): "admin" | "user" {
+  if (email && adminEmails.includes(email.toLowerCase())) return "admin";
+  return isFirstUser && adminEmails.length === 0 ? "admin" : "user";
+}
+
+/** Cria ou atualiza o usuário que entrou com o Google (papel inicial: roleForNewUser). */
 export async function upsertGoogleUser(p: GoogleProfile): Promise<User> {
   const db = getDb();
   return db.transaction(async (tx) => {
@@ -52,7 +63,7 @@ export async function upsertGoogleUser(p: GoogleProfile): Promise<User> {
         email: p.email,
         name: p.name,
         avatar: p.picture,
-        role: count === 0 || forcedAdmin ? "admin" : "user",
+        role: roleForNewUser(p.email, count === 0, env.adminEmails),
         lastSignInAt: new Date(),
       })
       .returning();

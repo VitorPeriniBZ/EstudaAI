@@ -8,6 +8,14 @@ import { dayStart, monthStart } from "./lib/plans";
 import { GENERATION_KINDS } from "@contracts/plans";
 import { testProvider } from "./ai/providers";
 import { recentAiEvents } from "./ai/diagnostics";
+import { checkProviderBaseUrl } from "./ai/base-url";
+
+/** Recusa Base URL em localhost/rede interna (vazia = padrão do provedor, sempre ok). */
+async function assertSafeBaseUrl(baseUrl: string | undefined) {
+  if (!baseUrl) return;
+  const problem = await checkProviderBaseUrl(baseUrl);
+  if (problem) throw new TRPCError({ code: "BAD_REQUEST", message: problem });
+}
 
 function maskKey(key: string | null): string | null {
   if (!key) return null;
@@ -131,6 +139,7 @@ export const adminRouter = createRouter({
           message: "Informe a API key do provedor.",
         });
       }
+      await assertSafeBaseUrl(input.baseUrl);
       const [{ id }] = await getDb()
         .insert(aiProviders)
         .values({
@@ -156,6 +165,19 @@ export const adminRouter = createRouter({
         where: eq(aiProviders.id, id),
       });
       if (!row) throw new TRPCError({ code: "NOT_FOUND" });
+      // a chave salva só vai para o destino em que foi cadastrada: trocar o tipo ou a
+      // Base URL exige digitar a chave de novo (senão bastaria apontar a Base URL para um
+      // servidor próprio e clicar em "Testar" para receber a chave)
+      const destinoMudou =
+        (patch.type !== undefined && patch.type !== row.type) ||
+        (patch.baseUrl !== undefined && (patch.baseUrl || null) !== row.baseUrl);
+      if (destinoMudou && !patch.apiKey) {
+        throw new TRPCError({
+          code: "BAD_REQUEST",
+          message: "Ao trocar o tipo ou a Base URL, informe a API key de novo.",
+        });
+      }
+      if (patch.baseUrl !== undefined) await assertSafeBaseUrl(patch.baseUrl);
       await db
         .update(aiProviders)
         .set({

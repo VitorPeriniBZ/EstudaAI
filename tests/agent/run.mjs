@@ -89,6 +89,8 @@ const appEnv = {
   GOOGLE_TOKEN_URL: "http://localhost:4001/token", GOOGLE_JWKS_URL: "http://localhost:4001/certs",
   GOOGLE_ISSUER: "http://localhost:4001",
   ANTHROPIC_API_KEY: "", ADMIN_EMAILS: "", RENDER_EXTERNAL_URL: "",
+  // os provedores de IA falsos rodam em localhost; em produção essa variável NUNCA existe
+  AI_ALLOW_PRIVATE_BASEURL: "1",
 };
 const app = start("node", ["dist/boot.js"], appEnv, "app");
 if (!(await waitFor(`${BASE}/api/health`))) { console.error(app.logs()); die("o app não subiu"); }
