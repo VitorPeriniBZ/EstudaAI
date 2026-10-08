@@ -1,12 +1,26 @@
+import { useState } from "react";
 import { useParams, useNavigate } from "react-router";
+import { toast } from "sonner";
 import { plural } from "@/lib/plural";
-import { ArrowLeft, FileUp, BookOpen, HelpCircle, Layers, MessageCircleQuestion } from "lucide-react";
+import { ArrowLeft, FileUp, BookOpen, HelpCircle, Layers, MessageCircleQuestion, Pencil, Trash2 } from "lucide-react";
 import { trpc } from "@/providers/trpc";
 import { useAuth } from "@/hooks/useAuth";
 import AppHeader from "@/components/AppHeader";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Skeleton } from "@/components/ui/skeleton";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
+import SubjectDialog from "@/components/SubjectDialog";
 import { stainClass, stainStyle } from "@/lib/study";
+import { isHexColor } from "@/lib/color";
 import MaterialsTab from "@/components/study/MaterialsTab";
 import SummaryTab from "@/components/study/SummaryTab";
 import QuizTab from "@/components/study/QuizTab";
@@ -23,6 +37,20 @@ export default function SubjectPage() {
     enabled: !authLoading,
   });
   const subject = subjects?.find((s) => s.id === subjectId);
+  const utils = trpc.useUtils();
+  const [editOpen, setEditOpen] = useState(false);
+  const [editKey, setEditKey] = useState(0);
+  const [confirmDelete, setConfirmDelete] = useState(false);
+  const remove = trpc.subjects.remove.useMutation({
+    onSuccess: () => {
+      toast.success("Matéria excluída");
+      // tira do cache antes de voltar, para o cartão não aparecer por um instante no painel
+      utils.subjects.list.setData(undefined, (old) => old?.filter((s) => s.id !== subjectId));
+      utils.subjects.list.invalidate();
+      navigate("/app");
+    },
+    onError: (e) => toast.error(e.message),
+  });
 
   if (isLoading || authLoading) {
     return (
@@ -51,12 +79,38 @@ export default function SubjectPage() {
     <div className={`min-h-screen ${stainClass(subject.color)}`} style={stainStyle(subject.color)}>
       <AppHeader />
       <main className="mx-auto max-w-3xl px-4 py-6 pb-20">
-        <button
-          onClick={() => navigate("/app")}
-          className="inline-flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground transition-colors mb-3"
-        >
-          <ArrowLeft className="h-4 w-4" /> Minhas matérias
-        </button>
+        <div className="mb-3 flex items-center justify-between gap-3">
+          <button
+            onClick={() => navigate("/app")}
+            className="inline-flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground transition-colors"
+          >
+            <ArrowLeft className="h-4 w-4" /> Minhas matérias
+          </button>
+          {/* ações da matéria: aqui em cima o título fica com a largura toda no celular */}
+          <div className="flex shrink-0 items-center gap-1">
+            <button
+              type="button"
+              aria-label="Editar matéria"
+              title="Editar matéria"
+              className="rounded-md p-1.5 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground focus:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              onClick={() => {
+                setEditKey((k) => k + 1); // reabre com os dados atuais
+                setEditOpen(true);
+              }}
+            >
+              <Pencil className="h-4 w-4" />
+            </button>
+            <button
+              type="button"
+              aria-label="Excluir matéria"
+              title="Excluir matéria"
+              className="rounded-md p-1.5 text-muted-foreground transition-colors hover:bg-muted hover:text-destructive focus:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              onClick={() => setConfirmDelete(true)}
+            >
+              <Trash2 className="h-4 w-4" />
+            </button>
+          </div>
+        </div>
 
         <div className="slide-card mb-6">
           <div className="slide-label">{plural(subject.counts.questions, "questão gerada", "questões geradas")}</div>
@@ -108,6 +162,40 @@ export default function SubjectPage() {
           </TabsContent>
         </Tabs>
       </main>
+
+      <SubjectDialog
+        key={editKey}
+        open={editOpen}
+        onOpenChange={setEditOpen}
+        subject={subject}
+        savedColors={[...new Set((subjects ?? []).map((s) => s.color).filter(isHexColor))]}
+        onSaved={() => {
+          utils.subjects.list.invalidate();
+          utils.subjects.get.invalidate({ id: subject.id });
+        }}
+      />
+
+      <AlertDialog open={confirmDelete} onOpenChange={setConfirmDelete}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Excluir matéria?</AlertDialogTitle>
+            <AlertDialogDescription>
+              Isso apaga "{subject.name}" junto com materiais, quizzes, flashcards e
+              conversas. Essa ação não pode ser desfeita.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancelar</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={() => remove.mutate({ id: subject.id })}
+              disabled={remove.isPending}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+            >
+              Excluir
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }

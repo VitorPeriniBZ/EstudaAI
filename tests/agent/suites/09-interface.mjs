@@ -88,6 +88,25 @@ try {
   await pg.getByRole("button", { name: "Nova matéria" }).first().click();
   ok(await pg.getByRole("button", { name: `Cor personalizada ${hex}` }).isVisible(), "a cor usada antes aparece para as próximas matérias");
   await pg.keyboard.press("Escape");
+
+  console.log("\nEditar e excluir matéria");
+  ok((await pg.getByRole("button", { name: /^Excluir/ }).count()) === 0, "o painel não tem mais botão de excluir");
+  await pg.getByRole("button", { name: "Histologia", exact: true }).click();
+  await pg.waitForURL(/\/app\/materia\/\d+/);
+  await pg.getByRole("button", { name: "Editar matéria" }).click();
+  ok((await pg.getByLabel("Nome da matéria").inputValue()) === "Histologia", "editar abre com o nome atual");
+  ok((await pg.getByRole("button", { name: `Cor personalizada ${hex}` }).getAttribute("aria-pressed")) === "true", "editar abre com a cor atual selecionada");
+  await pg.getByLabel("Nome da matéria").fill("Histologia II");
+  await pg.getByRole("button", { name: "Roxo" }).click();
+  await pg.getByRole("button", { name: "Salvar alterações" }).click();
+  await pg.getByRole("heading", { name: "Histologia II" }).waitFor({ timeout: 5000 });
+  ok((await pg.locator("div.stain-giemsa").count()) > 0, "nome e cor atualizados na página da matéria");
+  await pg.getByRole("button", { name: "Excluir matéria" }).click();
+  await pg.getByRole("alertdialog").getByRole("button", { name: "Excluir" }).click();
+  await pg.waitForURL((u) => u.pathname === "/app");
+  await pg.locator(".slide-card").first().waitFor({ timeout: 5000 });
+  await pg.getByText("Histologia II").waitFor({ state: "detached", timeout: 5000 }).catch(() => {});
+  ok((await pg.getByText("Histologia II").count()) === 0, "excluir pede confirmação, volta ao painel e a matéria some");
   ok(errors.length === 0, "nenhum erro de JavaScript na página", errors.join(" | "));
 } catch (e) { fail++; console.log("  ✘ erro na interface:", e.message); }
 await browser.close();
