@@ -6,7 +6,7 @@ import { getDb } from "./queries/connection";
 import { materials } from "../db/schema";
 import { storage, MAX_FILE_BYTES } from "./lib/storage";
 import { messageFor, UserMessages } from "./lib/user-errors";
-import { withUploadSlot } from "./lib/plans";
+import { reserveUsage, withUploadSlot } from "./lib/plans";
 import { extractPdfText, extractImageText } from "./ai/generate";
 import { requireSubject } from "./subjects-router";
 
@@ -95,6 +95,9 @@ export const materialsRouter = createRouter({
       }
 
       const kind = isPdf ? "pdf" : "image";
+      // ler imagem usa IA: reserva a vaga do limite diário ANTES de guardar o arquivo
+      // (estornada se o envio ou a leitura falhar). PDF é lido aqui mesmo, sem IA.
+      const refundExtract = kind === "image" ? await reserveUsage(ctx.user, "extract") : null;
       // confere o limite e grava o arquivo sob trava (evita estourar com envios simultâneos)
       const { id, fileKey } = await withUploadSlot(ctx.user, async () => {
         const saved = await storage.uploadFile({
@@ -117,6 +120,9 @@ export const materialsRouter = createRouter({
           })
           .returning({ id: materials.id });
         return { id, fileKey: saved.key };
+      }).catch(async (err) => {
+        await refundExtract?.().catch(() => {});
+        throw err;
       });
 
       // Extração inline (rápida para imagens; PDFs de texto também são rápidos)
@@ -127,6 +133,7 @@ export const materialsRouter = createRouter({
           .set({ textContent: text, status: "ready", statusMsg: null })
           .where(eq(materials.id, id));
       } catch (err) {
+        await refundExtract?.().catch(() => {});
         await getDb()
           .update(materials)
           .set({ status: "error", statusMsg: errorMessage(err, ctx.user.role === "admin") })
@@ -161,7 +168,7 @@ export const materialsRouter = createRouter({
       return getDb().query.materials.findFirst({ where: eq(materials.id, id) });
     }),
 
-  /** Reprocessar um material que falhou na extração */
+  /** Reprocessar um material que falhou na extração (imagem conta no limite diário de leituras) */
   reprocess: authedQuery
     .input(z.object({ id: z.number() }))
     .mutation(async ({ ctx, input }) => {
@@ -173,6 +180,11 @@ export const materialsRouter = createRouter({
       if (row.kind === "note" || !row.fileKey) {
         throw new TRPCError({ code: "BAD_REQUEST", message: "Anotações não precisam de reprocessamento." });
       }
+      // material pronto não é relido: cada leitura de imagem é uma chamada paga de IA
+      if (row.status === "ready") {
+        throw new TRPCError({ code: "BAD_REQUEST", message: "Este material já foi processado." });
+      }
+      const refundExtract = row.kind === "image" ? await reserveUsage(ctx.user, "extract") : null;
       await db.update(materials).set({ status: "processing" }).where(eq(materials.id, row.id));
       try {
         const stored = await storage.getOwnedFile(row.fileKey, ctx.user.id);
@@ -186,6 +198,7 @@ export const materialsRouter = createRouter({
           .set({ textContent: text, status: "ready", statusMsg: null })
           .where(eq(materials.id, row.id));
       } catch (err) {
+        await refundExtract?.().catch(() => {});
         await db
           .update(materials)
           .set({ status: "error", statusMsg: errorMessage(err, ctx.user.role === "admin") })

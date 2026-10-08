@@ -63,17 +63,18 @@ export async function usageSummary(user: User) {
   const plan = effectivePlan(user);
   const limits = PLANS[plan];
   const db = getDb();
-  const [files, generations, summariesToday, chatToday] = await Promise.all([
+  const [files, generations, summariesToday, chatToday, extractsToday] = await Promise.all([
     countFiles(user.id),
     countEvents(db, user.id, GENERATION_KINDS, monthStart()),
     countEvents(db, user.id, ["summary"], dayStart()),
     countEvents(db, user.id, ["chat"], dayStart()),
+    countEvents(db, user.id, ["extract"], dayStart()),
   ]);
   return {
     plan,
     planLabel: limits.label,
     limits,
-    usage: { files, generations, summariesToday, chatToday },
+    usage: { files, generations, summariesToday, chatToday, extractsToday },
     resetsAt: nextMonthStart().toISOString(),
   };
 }
@@ -116,16 +117,23 @@ function brDate(d: Date) {
   return d.toLocaleDateString("pt-BR", { timeZone: "America/Sao_Paulo" });
 }
 
-/** Limites que se aplicam a cada tipo de uso. */
-function checksFor(limits: PlanLimits, kind: UsageKind) {
+/**
+ * Limites que se aplicam a cada tipo de uso. No Gratuito a mensagem oferece o PRO;
+ * no PRO os tetos são de uso justo (protegem o custo de IA).
+ */
+export function checksFor(plan: PlanId, kind: UsageKind) {
+  const limits = PLANS[plan];
+  const pro = plan === "pro";
   const checks: { kinds: readonly UsageKind[]; since: Date; max: number; message: string }[] = [];
   const tomorrow = new Date(dayStart().getTime() + 24 * 3600_000);
-  if (kind !== "chat" && limits.maxGenerationsPerMonth !== null) {
+  if ((GENERATION_KINDS as readonly UsageKind[]).includes(kind) && limits.maxGenerationsPerMonth !== null) {
     checks.push({
       kinds: GENERATION_KINDS,
       since: monthStart(),
       max: limits.maxGenerationsPerMonth,
-      message: `Você usou as ${limits.maxGenerationsPerMonth} gerações do plano Gratuito deste mês (quiz, resumo e flashcards). O limite renova em ${brDate(nextMonthStart())}, ou assine o PRO para gerar sem limite.`,
+      message: pro
+        ? `Você chegou ao limite de uso justo do PRO: ${limits.maxGenerationsPerMonth} gerações por mês (quiz, resumo e flashcards). O limite renova em ${brDate(nextMonthStart())}.`
+        : `Você usou as ${limits.maxGenerationsPerMonth} gerações do plano Gratuito deste mês (quiz, resumo e flashcards). O limite renova em ${brDate(nextMonthStart())}, ou assine o PRO para gerar até ${PLANS.pro.maxGenerationsPerMonth ?? "sem limite"} por mês.`,
     });
   }
   if (kind === "summary" && limits.maxSummariesPerDay !== null) {
@@ -133,7 +141,7 @@ function checksFor(limits: PlanLimits, kind: UsageKind) {
       kinds: ["summary"],
       since: dayStart(),
       max: limits.maxSummariesPerDay,
-      message: `O plano Gratuito permite ${limits.maxSummariesPerDay} resumos por dia. Tente de novo amanhã (${brDate(tomorrow)}) ou assine o PRO para resumos sem limite.`,
+      message: `O plano ${limits.label} permite ${limits.maxSummariesPerDay} resumos por dia. Tente de novo amanhã (${brDate(tomorrow)})${pro ? "." : " ou assine o PRO para resumos sem limite diário."}`,
     });
   }
   if (kind === "chat" && limits.maxChatPerDay !== null) {
@@ -141,7 +149,19 @@ function checksFor(limits: PlanLimits, kind: UsageKind) {
       kinds: ["chat"],
       since: dayStart(),
       max: limits.maxChatPerDay,
-      message: `Você usou as ${limits.maxChatPerDay} perguntas de hoje do plano Gratuito. Volte amanhã (${brDate(tomorrow)}) ou assine o PRO para tirar dúvidas sem limite.`,
+      message: pro
+        ? `Você chegou ao limite de uso justo do PRO: ${limits.maxChatPerDay} perguntas por dia no chat. Volte amanhã (${brDate(tomorrow)}).`
+        : `Você usou as ${limits.maxChatPerDay} perguntas de hoje do plano Gratuito. Volte amanhã (${brDate(tomorrow)}) ou assine o PRO para até ${PLANS.pro.maxChatPerDay ?? "quantas quiser"} perguntas por dia.`,
+    });
+  }
+  if (kind === "extract" && limits.maxExtractsPerDay !== null) {
+    checks.push({
+      kinds: ["extract"],
+      since: dayStart(),
+      max: limits.maxExtractsPerDay,
+      message: pro
+        ? `Você chegou ao limite de uso justo do PRO: ${limits.maxExtractsPerDay} imagens lidas por dia. Tente de novo amanhã (${brDate(tomorrow)}) ou envie o conteúdo como PDF.`
+        : `O plano Gratuito lê até ${limits.maxExtractsPerDay} imagens por dia com IA. Tente de novo amanhã (${brDate(tomorrow)}), envie o conteúdo como PDF ou digite uma anotação.`,
     });
   }
   return checks;
@@ -154,7 +174,7 @@ function checksFor(limits: PlanLimits, kind: UsageKind) {
  * Devolve uma função para estornar a reserva se a chamada falhar.
  */
 export async function reserveUsage(user: User, kind: UsageKind): Promise<() => Promise<void>> {
-  const checks = checksFor(limitsFor(user), kind);
+  const checks = checksFor(effectivePlan(user), kind);
   const id = await getDb().transaction(async (tx) => {
     await tx.execute(sql`select pg_advisory_xact_lock(7001, ${user.id})`);
     for (const c of checks) {

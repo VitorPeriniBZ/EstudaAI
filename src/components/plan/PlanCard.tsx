@@ -27,7 +27,7 @@ export default function PlanCard() {
       <div className="mt-6 rounded-lg border bg-card px-4 py-3 flex flex-wrap items-center gap-x-2 gap-y-1 text-sm">
         <Crown className="h-4 w-4 shrink-0 text-amber-500" />
         <span className="font-semibold">Plano PRO</span>
-        <span className="min-w-0 text-muted-foreground">· arquivos, gerações, resumos e chat sem limite · quiz até {data.limits.maxQuizQuestions} questões · flashcards até {data.limits.maxFlashcards}</span>
+        <span className="min-w-0 text-muted-foreground">· arquivos e resumos sem limite · {data.usage.generations} de {data.limits.maxGenerationsPerMonth} gerações este mês · até {data.limits.maxChatPerDay} perguntas e {data.limits.maxExtractsPerDay} imagens lidas por dia (uso justo) · quiz até {data.limits.maxQuizQuestions} questões · flashcards até {data.limits.maxFlashcards}</span>
       </div>
     );
   }
@@ -66,7 +66,8 @@ export default function PlanCard() {
       </div>
       <p className="mt-3 text-xs text-muted-foreground">
         Hoje: <strong className="text-foreground">{data.usage.summariesToday} de {data.limits.maxSummariesPerDay}</strong> resumos ·{" "}
-        <strong className="text-foreground">{data.usage.chatToday} de {data.limits.maxChatPerDay}</strong> perguntas no chat ·
+        <strong className="text-foreground">{data.usage.chatToday} de {data.limits.maxChatPerDay}</strong> perguntas no chat ·{" "}
+        <strong className="text-foreground">{data.usage.extractsToday} de {data.limits.maxExtractsPerDay}</strong> imagens lidas ·
         flashcards até {data.limits.maxFlashcards} por vez · quiz até {data.limits.maxQuizQuestions} questões
       </p>
       <ProDialog open={open} onOpenChange={setOpen} />

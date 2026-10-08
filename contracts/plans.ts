@@ -18,6 +18,8 @@ export interface PlanLimits {
   maxFlashcards: number;
   /** perguntas no chat de dúvidas por dia (não contam nas gerações) */
   maxChatPerDay: number | null;
+  /** imagens lidas com IA por dia: upload ou reprocessamento de foto (não contam nas gerações) */
+  maxExtractsPerDay: number | null;
 }
 
 export const PLANS: Record<PlanId, PlanLimits> = {
@@ -29,15 +31,19 @@ export const PLANS: Record<PlanId, PlanLimits> = {
     maxSummariesPerDay: 2,
     maxFlashcards: 15,
     maxChatPerDay: 5,
+    maxExtractsPerDay: 10,
   },
+  // limites de uso justo: o PRO é "sem se preocupar com limites" no uso normal, mas tem
+  // teto para o custo de IA não ficar em aberto (números de partida — ajuste aqui)
   pro: {
     label: "PRO",
     maxFiles: null,
-    maxGenerationsPerMonth: null,
+    maxGenerationsPerMonth: 300,
     maxQuizQuestions: 50,
     maxSummariesPerDay: null,
     maxFlashcards: 40,
-    maxChatPerDay: null,
+    maxChatPerDay: 100,
+    maxExtractsPerDay: 100,
   },
 };
 
@@ -51,4 +57,4 @@ export const MAX_FLASHCARDS = 40;
 export const GENERATION_KINDS = ["quiz", "summary", "flashcards"] as const;
 export type GenerationKind = (typeof GENERATION_KINDS)[number];
 /** Tudo o que é registrado em usage_events. */
-export type UsageKind = GenerationKind | "chat";
+export type UsageKind = GenerationKind | "chat" | "extract";

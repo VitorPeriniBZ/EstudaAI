@@ -17,12 +17,13 @@ const ROWS: { label: string; free: string; pro: string }[] = [
   {
     label: "Gerações com IA por mês",
     free: fmt(PLANS.free.maxGenerationsPerMonth, "por mês"),
-    pro: fmt(PLANS.pro.maxGenerationsPerMonth, ""),
+    pro: fmt(PLANS.pro.maxGenerationsPerMonth, "por mês"),
   },
   { label: "Questões por quiz", free: `até ${PLANS.free.maxQuizQuestions}`, pro: `até ${PLANS.pro.maxQuizQuestions}` },
   { label: "Resumos", free: fmt(PLANS.free.maxSummariesPerDay, "por dia"), pro: fmt(PLANS.pro.maxSummariesPerDay, "") },
   { label: "Flashcards por geração", free: `até ${PLANS.free.maxFlashcards}`, pro: `até ${PLANS.pro.maxFlashcards}` },
-  { label: "Perguntas no chat de dúvidas", free: fmt(PLANS.free.maxChatPerDay, "por dia"), pro: fmt(PLANS.pro.maxChatPerDay, "") },
+  { label: "Perguntas no chat de dúvidas", free: fmt(PLANS.free.maxChatPerDay, "por dia"), pro: fmt(PLANS.pro.maxChatPerDay, "por dia") },
+  { label: "Imagens lidas com IA", free: fmt(PLANS.free.maxExtractsPerDay, "por dia"), pro: fmt(PLANS.pro.maxExtractsPerDay, "por dia") },
   { label: "Anotações digitadas", free: "Sem limite", pro: "Sem limite" },
 ];
 
@@ -64,6 +65,7 @@ export default function ProDialog({ open, onOpenChange }: { open: boolean; onOpe
         </div>
         <DialogFooter className="sm:justify-between gap-2">
           <p className="text-xs text-muted-foreground self-center">
+            No PRO, os limites são de uso justo: cobrem o estudo normal e protegem o serviço.
             Pagamento online chegando em breve.
           </p>
           <Button disabled className="gap-2">

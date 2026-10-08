@@ -8,6 +8,7 @@ import { safeNext } from "../../api/auth/google";
 import { roleForNewUser } from "../../api/queries/users";
 import { checkProviderBaseUrl, isPrivateIp, literalBaseUrlProblem } from "../../api/ai/base-url";
 import { env } from "../../api/lib/env";
+import { checksFor } from "../../api/lib/plans";
 let pass = 0, fail = 0;
 const ok = (c: boolean, n: string, x = "") => { if (c) { pass++; console.log("  ✔", n); } else { fail++; console.log("  ✘", n, x); } };
 
@@ -126,4 +127,14 @@ ok(literalBaseUrlProblem("http://localhost:4002/v1", false) !== null && literalB
   "provedor já salvo com localhost é ignorado na hora de usar (sem a flag)");
 ok(literalBaseUrlProblem("https://api.groq.com/openai/v1", false) === null && literalBaseUrlProblem(null, false) === null, "Base URL pública ou vazia é usada");
 ok(!isPrivateIp("8.8.8.8") && !isPrivateIp("2606:4700::1111") && isPrivateIp("fe80::1"), "classificação de IPs públicos e privados");
+console.log("\nLimites de uso por plano");
+const resumo = (cs: ReturnType<typeof checksFor>) => JSON.stringify(cs.map((c) => [c.kinds.join("+"), c.max]));
+const ex = checksFor("free", "extract");
+ok(ex.length === 1 && ex[0].kinds.join() === "extract" && ex[0].max === 10, "leitura de imagem: só o limite diário de imagens (não gasta geração)", resumo(ex));
+const chatFree = checksFor("free", "chat");
+ok(chatFree.length === 1 && chatFree[0].kinds.join() === "chat", "chat: só o limite diário de perguntas", resumo(chatFree));
+ok(checksFor("free", "quiz").some((c) => c.max === 5 && /assine o PRO/.test(c.message)), "Gratuito: 5 gerações por mês, com convite ao PRO");
+const quizPro = checksFor("pro", "quiz");
+ok(quizPro.some((c) => c.max === 300 && /uso justo/.test(c.message)), "PRO: teto de 300 gerações por mês (uso justo)", resumo(quizPro));
+ok(checksFor("pro", "chat").some((c) => c.max === 100) && checksFor("pro", "extract").some((c) => c.max === 100), "PRO: 100 perguntas e 100 imagens por dia");
 console.log(`\n${pass} ok, ${fail} falhas`); process.exit(fail ? 1 : 0);

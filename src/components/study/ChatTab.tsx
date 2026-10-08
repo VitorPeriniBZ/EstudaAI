@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { usePlan } from "@/hooks/usePlan";
+import { PLANS } from "@contracts/plans";
 import { MessageCircleQuestion, Send, Trash2 } from "lucide-react";
 import { trpc } from "@/providers/trpc";
 import { Button } from "@/components/ui/button";
@@ -155,11 +156,15 @@ export default function ChatTab({ subjectId }: { subjectId: number }) {
         <div ref={bottomRef} />
       </div>
 
-      {chatLeft !== null && (
+      {chatLeft !== null && (!plan.isPro || chatLeft <= 10) && (
         <p className={`mt-3 text-xs ${chatLeft === 0 ? "text-destructive font-semibold" : "text-muted-foreground"}`}>
-          {chatLeft === 0
-            ? "Você usou as perguntas de hoje do plano Gratuito. Volte amanhã ou assine o PRO para perguntas sem limite."
-            : `Plano Gratuito: ${chatLeft} de ${plan.data?.limits.maxChatPerDay} perguntas restantes hoje · ilimitado no PRO`}
+          {plan.isPro
+            ? chatLeft === 0
+              ? `Você chegou ao limite de uso justo do PRO (${plan.data?.limits.maxChatPerDay} perguntas por dia). Volte amanhã.`
+              : `Restam ${chatLeft} de ${plan.data?.limits.maxChatPerDay} perguntas hoje (limite de uso justo do PRO).`
+            : chatLeft === 0
+              ? `Você usou as perguntas de hoje do plano Gratuito. Volte amanhã ou assine o PRO para até ${PLANS.pro.maxChatPerDay} perguntas por dia.`
+              : `Plano Gratuito: ${chatLeft} de ${plan.data?.limits.maxChatPerDay} perguntas restantes hoje · até ${PLANS.pro.maxChatPerDay} por dia no PRO`}
         </p>
       )}
       <div className="mt-3 flex gap-2 items-end">
