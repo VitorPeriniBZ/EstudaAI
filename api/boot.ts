@@ -1,6 +1,8 @@
 import { Hono } from "hono";
 import { bodyLimit } from "hono/body-limit";
 import { compress } from "hono/compress";
+import { csrf } from "hono/csrf";
+import { secureHeaders } from "hono/secure-headers";
 import type { HttpBindings } from "@hono/node-server";
 import { fetchRequestHandler } from "@trpc/server/adapters/fetch";
 import { sql } from "drizzle-orm";
@@ -17,6 +19,31 @@ import { Paths } from "@contracts/constants";
 
 const app = new Hono<{ Bindings: HttpBindings }>();
 
+// Cabeçalhos de segurança em todas as respostas (HSTS, anti-iframe, nosniff…).
+// Fica ANTES do gzip: registrado depois dele, o @hono/node-server perdia esses cabeçalhos
+// nas respostas pequenas em c.json (ex.: /api/health).
+// A CSP começa em modo "report-only": o navegador só avisa no console o que seria
+// bloqueado. Depois de alguns dias sem avisos, troque por contentSecurityPolicy.
+app.use(
+  "*",
+  secureHeaders({
+    strictTransportSecurity: "max-age=31536000; includeSubDomains",
+    xFrameOptions: "DENY",
+    referrerPolicy: "strict-origin-when-cross-origin",
+    contentSecurityPolicyReportOnly: {
+      defaultSrc: ["'self'"],
+      scriptSrc: ["'self'"],
+      connectSrc: ["'self'"],
+      styleSrc: ["'self'", "'unsafe-inline'", "https://fonts.googleapis.com"],
+      fontSrc: ["https://fonts.gstatic.com"],
+      imgSrc: ["'self'", "data:", "https://lh3.googleusercontent.com"],
+      frameAncestors: ["'none'"],
+      objectSrc: ["'none'"],
+      baseUri: ["'self'"],
+    },
+  }),
+);
+
 // gzip em HTML, JS, CSS e JSON (as respostas do tRPC com quiz e resumo são grandes);
 // os arquivos enviados (PDF/imagem) ficam de fora, já são comprimidos
 app.use("*", async (c, next) => {
@@ -26,6 +53,10 @@ app.use("*", async (c, next) => {
 
 // upload vai em base64 (15 MB de arquivo ≈ 20 MB de JSON)
 app.use("/api/*", bodyLimit({ maxSize: 25 * 1024 * 1024 }));
+
+// CSRF: POST com corpo de formulário (multipart, urlencoded, text/plain) só da própria origem.
+// O tRPC usa JSON, que outro site não consegue enviar sem CORS, mas também aceita multipart.
+app.use("/api/*", csrf(env.appUrl ? { origin: env.appUrl } : undefined));
 
 /* ---------- Login com Google ---------- */
 app.get(Paths.googleStart, googleStartHandler());

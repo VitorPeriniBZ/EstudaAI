@@ -144,7 +144,26 @@ const comChave = await trpc(A, "admin.updateProvider", { id: p3.data.id, baseUrl
 ok(comChave.data?.ok === true, "trocar a Base URL informando a chave funciona", JSON.stringify(comChave.error?.message));
 await trpc(A, "admin.deleteProvider", { id: p3.data.id });
 
-console.log("\n6. Exclusões e logout");
+console.log("\n6. Cabeçalhos de segurança e CSRF");
+for (const p of ["/", "/api/health", "/api/nao-existe"]) {
+  const h = (await fetch(B + p)).headers;
+  ok(/max-age=\d+/.test(h.get("strict-transport-security") ?? "") && h.get("x-frame-options") === "DENY" &&
+     h.get("x-content-type-options") === "nosniff" && h.get("referrer-policy") === "strict-origin-when-cross-origin",
+     `HSTS, X-Frame-Options, nosniff e Referrer-Policy em ${p}`, JSON.stringify(Object.fromEntries(h)));
+  const csp = h.get("content-security-policy-report-only") ?? "";
+  ok(/default-src 'self'/.test(csp) && /frame-ancestors 'none'/.test(csp) && /img-src [^;]*lh3\.googleusercontent\.com/.test(csp), `CSP (report-only) em ${p}`, csp);
+}
+const maliciosa = "https://site-malicioso.example";
+const matériasAntes = (await trpc(Bc, "subjects.list", undefined, true)).data.length;
+const forjado = await fetch(B + "/api/trpc/subjects.create", { method: "POST", headers: { cookie: Bc, "content-type": "text/plain", origin: maliciosa }, body: JSON.stringify({ json: { name: "CSRF" } }) });
+ok(forjado.status === 403, "POST text/plain vindo de outro site → 403 (CSRF)", String(forjado.status));
+const form = new FormData(); form.set("name", "CSRF");
+const multipart = await fetch(B + "/api/trpc/subjects.create", { method: "POST", headers: { cookie: Bc, origin: maliciosa }, body: form });
+ok(multipart.status === 403, "POST multipart vindo de outro site → 403 (CSRF)", String(multipart.status));
+ok((await trpc(Bc, "subjects.list", undefined, true)).data.length === matériasAntes, "nenhuma matéria criada pelos POSTs forjados");
+ok((await trpc(Bc, "subjects.create", { name: "Legítima" })).data?.id > 0, "POST JSON do próprio app continua funcionando");
+
+console.log("\n7. Exclusões e logout");
 ok((await trpc(A, "materials.remove", { id: up.data.id })).data?.ok, "excluir material");
 ok((await fetch(B + fu.data.url, { headers: { cookie: A } })).status === 404, "arquivo apagado junto");
 ok((await trpc(A, "subjects.remove", { id: sid })).data?.ok, "excluir matéria (transação)");

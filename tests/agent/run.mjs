@@ -105,7 +105,7 @@ async function resetDb() {
 }
 
 const suites = [
-  { name: "unidade", cmd: "npx", args: ["tsx", path.join(HERE, "unidade.ts")], db: false },
+  { name: "unidade", cmd: "npx", args: ["tsx", "--tsconfig", path.join(HERE, "tsconfig.json"), path.join(HERE, "unidade.ts")], db: false },
   ...fs.readdirSync(path.join(HERE, "suites")).filter((f) => f.endsWith(".mjs")).sort()
     .map((f) => ({ name: f.replace(/^\d+-/, "").replace(/\.mjs$/, ""), cmd: "node", args: [path.join(HERE, "suites", f)], db: true })),
 ].filter((s) => !only.length || only.some((o) => s.name.includes(o)));

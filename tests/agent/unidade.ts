@@ -10,6 +10,9 @@ import { checkProviderBaseUrl, isPrivateIp, literalBaseUrlProblem } from "../../
 import { env } from "../../api/lib/env";
 import { checksFor } from "../../api/lib/plans";
 import { subjectsWithCounts } from "../../api/subjects-router";
+import { createElement } from "react";
+import { renderToStaticMarkup } from "react-dom/server";
+import Markdown from "../../src/components/Markdown";
 let pass = 0, fail = 0;
 const ok = (c: boolean, n: string, x = "") => { if (c) { pass++; console.log("  ✔", n); } else { fail++; console.log("  ✘", n, x); } };
 
@@ -144,4 +147,10 @@ ok(!/"textContent"/.test(listagem), "não lê o texto extraído dos materiais", 
 ok(!/"summary"/.test(listagem), "não lê o resumo (só a data dele)");
 ok((listagem.match(/count\(\*\)/g) ?? []).length === 5, "contagens em subconsultas, numa consulta só");
 ok((listagem.match(/t\."subjectId" = "subjects"\."id"/g) ?? []).length === 5, "cada contagem filtra pela matéria da linha (subconsulta correlacionada)", listagem);
+console.log("\nMarkdown gerado pela IA (sem imagens)");
+const html = renderToStaticMarkup(createElement(Markdown, null,
+  "Veja ![grafico](https://exemplo.invalid/p.png?dados=segredo) e [fonte](https://exemplo.org).\n\n| a | b |\n|---|---|\n| 1 | 2 |"));
+ok(!/<img/i.test(html) && !html.includes("exemplo.invalid"), "imagem no markdown da IA não é renderizada (não vaza dados ao abrir)", html);
+ok(/<a href="https:\/\/exemplo\.org" target="_blank" rel="noreferrer noopener">/.test(html), "links continuam, abrindo em nova aba", html);
+ok(html.includes('class="md-table"'), "tabelas continuam com rolagem própria");
 console.log(`\n${pass} ok, ${fail} falhas`); process.exit(fail ? 1 : 0);
