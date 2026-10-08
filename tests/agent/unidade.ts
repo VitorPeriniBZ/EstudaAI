@@ -13,6 +13,8 @@ import { subjectsWithCounts } from "../../api/subjects-router";
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import Markdown from "../../src/components/Markdown";
+import { contrast, deriveStainVars, hexToHsv, hsvToHex, normalizeHex } from "../../src/lib/color";
+import { stainClass, stainStyle } from "../../src/lib/study";
 let pass = 0, fail = 0;
 const ok = (c: boolean, n: string, x = "") => { if (c) { pass++; console.log("  ✔", n); } else { fail++; console.log("  ✘", n, x); } };
 
@@ -153,4 +155,24 @@ const html = renderToStaticMarkup(createElement(Markdown, null,
 ok(!/<img/i.test(html) && !html.includes("exemplo.invalid"), "imagem no markdown da IA não é renderizada (não vaza dados ao abrir)", html);
 ok(/<a href="https:\/\/exemplo\.org" target="_blank" rel="noreferrer noopener">/.test(html), "links continuam, abrindo em nova aba", html);
 ok(html.includes('class="md-table"'), "tabelas continuam com rolagem própria");
+console.log("\nCor personalizada das matérias");
+for (const c of ["#8b5a52", "#2c5f8a", "#ff0000", "#00ff00", "#123456", "#ffffff", "#000000"]) {
+  ok(hsvToHex(hexToHsv(c)) === c, `hex ↔ HSV sem perda (${c})`, hsvToHex(hexToHsv(c)));
+}
+ok(normalizeHex(" #8B5A52 ") === "#8b5a52" && normalizeHex("#fff") === null && normalizeHex("red") === null && normalizeHex("#8b5a52;x") === null,
+  "só aceita #rrggbb (e guarda em minúsculas)");
+// cores extremas: amarelo puro (claro demais), branco, preto, ciano, a cor do fundo escuro…
+for (const c of ["#ffff00", "#ffffff", "#000000", "#00ffff", "#7fff00", "#1b242a", "#8b5a52"]) {
+  const { light, dark } = deriveStainVars(c);
+  const r = [contrast(light.stain, "#ffffff"), contrast(light.ink, light.soft), contrast(light.ink, "#edf1f2"),
+    contrast(dark.stain, "#131a1f"), contrast(dark.ink, "#1b242a"), contrast(dark.ink, dark.soft)];
+  ok(r.every((x) => x >= 4.5), `contraste ≥ 4.5:1 nos temas claro e escuro (${c})`, r.map((x) => x.toFixed(2)).join(" "));
+}
+ok(deriveStainVars("#8b5a52").light.stain === "#8b5a52", "cor que já é legível fica exatamente como foi escolhida");
+ok(stainClass("#8b5a52") === "stain-custom" && stainClass("giemsa") === "stain-giemsa" && stainClass("url(x)") === "stain-hema",
+  "classe: personalizada, pronta e inválida (cai na padrão)");
+const estilo = stainStyle("#8b5a52") as Record<string, string>;
+ok(stainStyle("hema") === undefined && estilo["--c-stain"] === "#8b5a52" && /^#[0-9a-f]{6}$/.test(estilo["--c-stain-dark"]),
+  "variáveis da cor personalizada vão no style");
+ok(stainStyle("#8b5a52;background:url(x)") === undefined, "texto que não é #rrggbb nunca vira CSS");
 console.log(`\n${pass} ok, ${fail} falhas`); process.exit(fail ? 1 : 0);

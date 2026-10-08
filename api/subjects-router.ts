@@ -25,6 +25,15 @@ export async function requireSubject(subjectId: number, userId: number) {
 export const SUBJECT_COLORS = ["hema", "giemsa", "lugol", "madder", "neutral"] as const;
 
 /**
+ * Cor da matéria: uma das prontas ou personalizada no formato #rrggbb (guardada em
+ * minúsculas). O formato é conferido à risca porque a cor vira variável de CSS na tela.
+ */
+const subjectColor = z.union([
+  z.enum(SUBJECT_COLORS),
+  z.string().regex(/^#[0-9a-fA-F]{6}$/, "Cor inválida").transform((c) => c.toLowerCase()),
+]);
+
+/**
  * count(*) dos registros de `table` ligados à matéria da linha atual (subconsulta correlacionada).
  * Nomes qualificados à mão: o drizzle escreve as colunas sem a tabela dentro do select, e
  * "subjectId" = "id" seria resolvido inteiro na tabela da subconsulta.
@@ -86,7 +95,7 @@ export const subjectsRouter = createRouter({
       z.object({
         name: z.string().min(1).max(160),
         description: z.string().max(2000).optional(),
-        color: z.enum(SUBJECT_COLORS).default("hema"),
+        color: subjectColor.default("hema"),
       }),
     )
     .mutation(async ({ ctx, input }) => {
@@ -108,7 +117,7 @@ export const subjectsRouter = createRouter({
         id: z.number(),
         name: z.string().min(1).max(160).optional(),
         description: z.string().max(2000).nullable().optional(),
-        color: z.enum(SUBJECT_COLORS).optional(),
+        color: subjectColor.optional(),
       }),
     )
     .mutation(async ({ ctx, input }) => {
