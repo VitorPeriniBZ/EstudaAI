@@ -1,4 +1,6 @@
 /** Utilitários visuais do EstudaAí */
+import type { CSSProperties } from "react";
+import { deriveStainVars, isHexColor } from "./color";
 
 export const STAINS = ["hema", "giemsa", "lugol", "madder", "neutral"] as const;
 export type Stain = (typeof STAINS)[number];
@@ -20,8 +22,33 @@ export const STAIN_SWATCH: Record<Stain, string> = {
   neutral: "#44545D",
 };
 
+export function isStain(color: unknown): color is Stain {
+  return STAINS.includes(color as Stain);
+}
+
+/** Classe da cor da matéria: uma das prontas ou "stain-custom" (cor #rrggbb, ver stainStyle). */
 export function stainClass(color: string | null | undefined): string {
-  return `stain-${STAINS.includes(color as Stain) ? color : "hema"}`;
+  if (isHexColor(color)) return "stain-custom";
+  return `stain-${isStain(color) ? color : "hema"}`;
+}
+
+/** Variáveis da cor personalizada (claro e escuro); undefined para as cores prontas. */
+export function stainStyle(color: string | null | undefined): CSSProperties | undefined {
+  if (!isHexColor(color)) return undefined;
+  const { light, dark } = deriveStainVars(color);
+  return {
+    "--c-stain": light.stain,
+    "--c-stain-soft": light.soft,
+    "--c-stain-ink": light.ink,
+    "--c-stain-dark": dark.stain,
+    "--c-stain-soft-dark": dark.soft,
+    "--c-stain-ink-dark": dark.ink,
+  } as CSSProperties;
+}
+
+/** Cor da bolinha no seletor (a própria cor personalizada, ou a amostra da cor pronta). */
+export function swatchColor(color: string): string {
+  return isHexColor(color) ? color : STAIN_SWATCH[isStain(color) ? color : "hema"];
 }
 
 export function formatBytes(n: number | null | undefined): string {

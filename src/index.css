@@ -105,6 +105,10 @@
 .dark .stain-madder { --stain:#EE8AA5; --stain-soft:#3A1F28; --stain-ink:#F6B7C8; }
 .dark .stain-neutral{ --stain:#B3C2C9; --stain-soft:#26323A; --stain-ink:#D5DFE4; }
 
+/* cor personalizada (#rrggbb): os tons vêm calculados no style (stainStyle, src/lib/study.ts) */
+.stain-custom       { --stain:var(--c-stain); --stain-soft:var(--c-stain-soft); --stain-ink:var(--c-stain-ink); }
+.dark .stain-custom { --stain:var(--c-stain-dark); --stain-soft:var(--c-stain-soft-dark); --stain-ink:var(--c-stain-ink-dark); }
+
 /* ---------- Lâmina de microscopia (card marcante) ---------- */
 .slide-card {
   display: grid;

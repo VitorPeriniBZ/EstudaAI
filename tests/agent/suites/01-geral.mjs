@@ -66,6 +66,14 @@ ok((await trpc(null, "subjects.list", undefined, true)).error?.data?.code === "U
 console.log("\n3. Matérias, anotações e upload");
 const subj = await trpc(A, "subjects.create", { name: "Parasitologia", color: "hema" });
 ok(subj.data?.id > 0, "criar matéria"); const sid = subj.data.id;
+const propria = await trpc(A, "subjects.create", { name: "Cor própria", color: "#8B5A52" });
+ok(propria.data?.color === "#8b5a52", "matéria com cor personalizada (#rrggbb, guardada em minúsculas)", JSON.stringify(propria.error?.message ?? propria.data?.color));
+for (const color of ["#fff", "red", "#12345g", "#8b5a52; background:url(x)", "javascript:alert(1)"]) {
+  ok((await trpc(A, "subjects.create", { name: "x", color })).error?.data?.code === "BAD_REQUEST", `cor inválida recusada: ${color}`);
+}
+await trpc(A, "subjects.update", { id: propria.data.id, color: "#2E7D32" });
+ok((await trpc(A, "subjects.get", { id: propria.data.id }, true)).data?.color === "#2e7d32", "trocar para outra cor personalizada");
+await trpc(A, "subjects.remove", { id: propria.data.id });
 const note = await trpc(A, "materials.createNote", { subjectId: sid, title: "Anotação", content: "Ascaris lumbricoides vive no jejuno e faz ciclo pulmonar." });
 ok(note.data?.status === "ready", "criar anotação");
 const pdf = fs.readFileSync(path.join(FIX, "aula.pdf"));

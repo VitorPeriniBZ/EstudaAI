@@ -6,7 +6,7 @@ import { useAuth } from "@/hooks/useAuth";
 import AppHeader from "@/components/AppHeader";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Skeleton } from "@/components/ui/skeleton";
-import { stainClass } from "@/lib/study";
+import { stainClass, stainStyle } from "@/lib/study";
 import MaterialsTab from "@/components/study/MaterialsTab";
 import SummaryTab from "@/components/study/SummaryTab";
 import QuizTab from "@/components/study/QuizTab";
@@ -48,7 +48,7 @@ export default function SubjectPage() {
   }
 
   return (
-    <div className={`min-h-screen ${stainClass(subject.color)}`}>
+    <div className={`min-h-screen ${stainClass(subject.color)}`} style={stainStyle(subject.color)}>
       <AppHeader />
       <main className="mx-auto max-w-3xl px-4 py-6 pb-20">
         <button

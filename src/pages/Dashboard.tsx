@@ -27,33 +27,48 @@ import {
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import ColorPicker from "@/components/ColorPicker";
 import { toast } from "sonner";
 import {
   STAINS,
-  STAIN_SWATCH,
   STAIN_LABELS,
+  isStain,
   stainClass,
-  type Stain,
+  stainStyle,
+  swatchColor,
 } from "@/lib/study";
+import { isHexColor } from "@/lib/color";
+
+const colorLabel = (c: string) => (isStain(c) ? STAIN_LABELS[c] : `Cor personalizada ${c}`);
 
 function SubjectDialog({
   open,
   onOpenChange,
   onCreated,
+  savedColors,
 }: {
   open: boolean;
   onOpenChange: (v: boolean) => void;
   onCreated: (id: number) => void;
+  /** cores personalizadas já usadas em outras matérias */
+  savedColors: string[];
 }) {
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
-  const [color, setColor] = useState<Stain>("hema");
+  /** uma das cores prontas ("hema"…) ou personalizada ("#rrggbb") */
+  const [color, setColor] = useState<string>("hema");
+  const [customColor, setCustomColor] = useState<string | null>(null);
+  const [pickerOpen, setPickerOpen] = useState(false);
+  const [pickerKey, setPickerKey] = useState(0);
+  const swatches = [...STAINS, ...new Set([...savedColors, ...(customColor ? [customColor] : [])])];
   const create = trpc.subjects.create.useMutation({
     onSuccess: (s) => {
       onOpenChange(false);
       setName("");
       setDescription("");
       setColor("hema");
+      setCustomColor(null);
       if (s?.id) onCreated(s.id);
     },
     onError: (e) => toast.error(e.message),
@@ -92,23 +107,61 @@ function SubjectDialog({
             />
           </div>
           <div>
-            <span className="text-sm font-semibold">Cor da matéria</span>
-            <div className="mt-2 flex gap-2">
-              {STAINS.map((c) => (
-                <button
-                  key={c}
-                  type="button"
-                  title={STAIN_LABELS[c]}
-                  onClick={() => setColor(c)}
-                  className="h-9 w-9 rounded-full border-2 transition-transform hover:scale-110 focus:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                  style={{
-                    backgroundColor: STAIN_SWATCH[c],
-                    borderColor:
-                      color === c ? "hsl(var(--foreground))" : "transparent",
-                  }}
-                  aria-pressed={color === c}
-                />
-              ))}
+            <span className="text-sm font-semibold" id="sub-color">Cor da matéria</span>
+            <div className="mt-2 flex items-start justify-between gap-2">
+              <div className="flex flex-wrap gap-2" role="group" aria-labelledby="sub-color">
+                {swatches.map((c) => (
+                  <button
+                    key={c}
+                    type="button"
+                    title={colorLabel(c)}
+                    aria-label={colorLabel(c)}
+                    onClick={() => setColor(c)}
+                    className="h-9 w-9 rounded-full border-2 transition-transform hover:scale-110 focus:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                    style={{
+                      backgroundColor: swatchColor(c),
+                      borderColor:
+                        color === c ? "hsl(var(--foreground))" : "transparent",
+                    }}
+                    aria-pressed={color === c}
+                  />
+                ))}
+              </div>
+              {/* botão no canto: abre o seletor para criar uma cor nova */}
+              <Popover
+                open={pickerOpen}
+                onOpenChange={(o) => {
+                  if (o) setPickerKey((k) => k + 1); // reabre a partir da cor selecionada
+                  setPickerOpen(o);
+                }}
+              >
+                <PopoverTrigger asChild>
+                  <button
+                    type="button"
+                    title="Escolher outra cor"
+                    aria-label="Escolher outra cor"
+                    className="grid h-9 w-9 shrink-0 place-items-center rounded-full border-2 border-dashed border-muted-foreground/60 text-muted-foreground transition-colors hover:border-foreground hover:text-foreground focus:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                  >
+                    <Plus className="h-4 w-4" />
+                  </button>
+                </PopoverTrigger>
+                <PopoverContent align="end" className="w-[19rem]">
+                  <p className="mb-3 font-display font-bold">Seletor de cores</p>
+                  <ColorPicker
+                    key={pickerKey}
+                    value={swatchColor(color).toLowerCase()}
+                    onChange={(hex) => {
+                      setCustomColor(hex);
+                      setColor(hex);
+                    }}
+                  />
+                  <div className="mt-4 flex justify-end">
+                    <Button size="sm" onClick={() => setPickerOpen(false)}>
+                      Usar esta cor
+                    </Button>
+                  </div>
+                </PopoverContent>
+              </Popover>
             </div>
           </div>
         </div>
@@ -189,7 +242,7 @@ export default function Dashboard() {
         ) : (
           <div className="mt-8 grid gap-4 sm:grid-cols-2">
             {subjects.map((s) => (
-              <div key={s.id} className={`slide-card ${stainClass(s.color)} group`}>
+              <div key={s.id} className={`slide-card ${stainClass(s.color)} group`} style={stainStyle(s.color)}>
                 <div className="slide-label">{plural(s.counts.questions, "questão", "questões")}</div>
                 <div className="slide-body relative">
                   <div className="flex items-start justify-between gap-2">
@@ -242,6 +295,7 @@ export default function Dashboard() {
       <SubjectDialog
         open={dialogOpen}
         onOpenChange={setDialogOpen}
+        savedColors={[...new Set((subjects ?? []).map((s) => s.color).filter(isHexColor))]}
         onCreated={(id) => {
           utils.subjects.list.invalidate();
           navigate(`/app/materia/${id}`);

@@ -63,6 +63,31 @@ try {
   ok((await pg.locator(".celebrate-text").innerText()) === "PERFEITO", "mostra PERFEITO ao gabaritar");
   await pg.waitForTimeout(2300);
   ok(!(await pg.locator(".celebrate-text").count()), "PERFEITO some depois de 2 s");
+  console.log("\nCor personalizada da matéria");
+  await pg.goto(`${B}/app`);
+  await pg.getByRole("button", { name: "Nova matéria" }).first().click();
+  await pg.getByLabel("Nome da matéria").fill("Histologia");
+  await pg.getByRole("button", { name: "Escolher outra cor" }).click();
+  const area = pg.getByRole("slider", { name: "Saturação e brilho" });
+  await area.waitFor();
+  const ab = await area.boundingBox();
+  await pg.mouse.click(ab.x + ab.width * 0.6, ab.y + ab.height * 0.4);
+  const hb = await pg.getByRole("slider", { name: "Matiz" }).boundingBox();
+  await pg.mouse.click(hb.x + hb.width * 0.33, hb.y + hb.height / 2); // verde
+  const hex = await pg.getByLabel("Código da cor (hexadecimal)").inputValue();
+  ok(/^#[0-9a-f]{6}$/.test(hex) && hex !== "#2c5f8a", "o seletor gera uma cor nova (quadrado + barra de matiz)", hex);
+  await pg.getByRole("button", { name: "Usar esta cor" }).click();
+  ok((await pg.getByRole("button", { name: `Cor personalizada ${hex}` }).getAttribute("aria-pressed")) === "true", "a cor nova aparece selecionada entre as bolinhas");
+  await pg.getByRole("button", { name: "Criar matéria" }).click();
+  await pg.waitForURL(/\/app\/materia\/\d+/);
+  const stain = await pg.locator("div.stain-custom").first().evaluate((el) => getComputedStyle(el).getPropertyValue("--stain").trim());
+  ok(/^#[0-9a-f]{6}$/.test(stain), "a página da matéria usa a cor personalizada", stain);
+  await pg.goto(`${B}/app`);
+  await pg.locator(".slide-card.stain-custom").first().waitFor({ timeout: 5000 }).catch(() => {});
+  ok((await pg.locator(".slide-card.stain-custom").count()) === 1, "o cartão no painel usa a cor personalizada");
+  await pg.getByRole("button", { name: "Nova matéria" }).first().click();
+  ok(await pg.getByRole("button", { name: `Cor personalizada ${hex}` }).isVisible(), "a cor usada antes aparece para as próximas matérias");
+  await pg.keyboard.press("Escape");
   ok(errors.length === 0, "nenhum erro de JavaScript na página", errors.join(" | "));
 } catch (e) { fail++; console.log("  ✘ erro na interface:", e.message); }
 await browser.close();
