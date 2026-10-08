@@ -21,8 +21,8 @@ function Shell({ title, children }: { title: string; children: React.ReactNode }
         </div>
       </main>
       <footer className="border-t py-6 text-center text-xs text-muted-foreground">
-        <a href="/privacidade" className="underline">Privacidade</a> ·{" "}
-        <a href="/termos" className="underline">Termos de uso</a>
+        <a href="/privacidade" className="underline whitespace-nowrap">Privacidade</a> ·{" "}
+        <a href="/termos" className="underline whitespace-nowrap">Termos de uso</a>
       </footer>
     </div>
   );

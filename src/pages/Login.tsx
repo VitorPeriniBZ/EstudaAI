@@ -86,8 +86,8 @@ export default function Login() {
 
           <p className="mt-4 text-center text-xs text-muted-foreground">
             Usamos só seu nome, e-mail e foto do Google para criar sua conta. Ao entrar, você
-            concorda com os <a href="/termos" className="underline">Termos de uso</a> e a{" "}
-            <a href="/privacidade" className="underline">Política de Privacidade</a>.
+            concorda com os <a href="/termos" className="underline whitespace-nowrap">Termos de uso</a> e a{" "}
+            <a href="/privacidade" className="underline whitespace-nowrap">Política de Privacidade</a>.
           </p>
         </div>
       </main>
