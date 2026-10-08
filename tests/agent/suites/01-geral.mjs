@@ -7,8 +7,8 @@ const ok = (cond, name, extra="") => { if (cond) { pass++; console.log("  ✔", 
 
 function cookiesFrom(res) { return (res.headers.getSetCookie?.() ?? []).map(c => c.split(";")[0]); }
 
-async function login(code) {
-  const r1 = await fetch(B + "/api/auth/google?next=/app", { redirect: "manual" });
+async function login(code, next = "/app") {
+  const r1 = await fetch(B + "/api/auth/google?next=" + encodeURIComponent(next), { redirect: "manual" });
   const loc = new URL(r1.headers.get("location"));
   const oauthCookie = cookiesFrom(r1).join("; ");
   const state = loc.searchParams.get("state");
@@ -48,6 +48,12 @@ const bad = await fetch(`${B}/api/auth/google/callback?code=code-ana&state=forja
 ok(bad.headers.get("location") === "/login?erro=sessao_expirada", "state inválido é rejeitado");
 const denied = await fetch(`${B}/api/auth/google/callback?error=access_denied`, { redirect: "manual" });
 ok(denied.headers.get("location") === "/login?erro=cancelado", "cancelamento volta ao login com aviso");
+// open redirect: o navegador lê "/\site" como "//site"; o destino final tem que ser /app
+for (const next of ["/\\exemplo.invalid", "//exemplo.invalid", "/\t/exemplo.invalid", "https://exemplo.invalid"]) {
+  const r = await login("code-ana", next);
+  ok(r.r2.status === 302 && r.r2.headers.get("location") === "/app", `?next=${JSON.stringify(next)} → /app`, r.r2.headers.get("location"));
+}
+ok((await login("code-ana", "/app/materia/7")).r2.headers.get("location") === "/app/materia/7", "?next interno é mantido");
 const forged = await trpc("estudaai_sid=eyJhbGciOiJIUzI1NiJ9.eyJ1aWQiOjF9.xxx", "auth.me", undefined, true);
 ok(forged.data === null, "JWT forjado não autentica");
 

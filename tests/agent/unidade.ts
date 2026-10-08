@@ -4,6 +4,7 @@ import { quizSchema, flashcardsSchema, normalizeQuiz, topicTarget, extractJson }
 import { classifyAiError, AiBadOutput, AiRejected, AiTooLarge } from "../../api/ai/errors";
 import { normalizeMarkdown } from "../../src/lib/markdown";
 import { healthRoutes } from "../../api/lib/health";
+import { safeNext } from "../../api/auth/google";
 let pass = 0, fail = 0;
 const ok = (c: boolean, n: string, x = "") => { if (c) { pass++; console.log("  ✔", n); } else { fail++; console.log("  ✘", n, x); } };
 
@@ -74,4 +75,10 @@ console.log("\nHealth check");
   const rdb = await semBanco.request("/db");
   ok(rdb.status === 503 && (await rdb.json()).ok === false, "/api/health/db responde 503 com o banco fora do ar");
 }
+
+console.log("\nRedirecionamento após o login (?next=)");
+for (const v of ["/\\exemplo.invalid", "//evil.com", "/\u0000x", "/\t/evil.com", "https://evil.com", "", undefined]) {
+  ok(safeNext(v) === "/app", `recusa ${JSON.stringify(v)}`, safeNext(v));
+}
+ok(safeNext("/app/materia/12?aba=quiz") === "/app/materia/12?aba=quiz", "aceita caminho interno");
 console.log(`\n${pass} ok, ${fail} falhas`); process.exit(fail ? 1 : 0);
