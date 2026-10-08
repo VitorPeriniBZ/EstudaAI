@@ -403,7 +403,8 @@ export default function AdminPage() {
             {(
               <div>
                 <label className="text-sm font-semibold">
-                  API key {editingId && "(deixe vazio para manter a atual)"}
+                  API key{" "}
+                  {editingId && "(deixe vazio para manter a atual; obrigatória ao trocar o tipo ou a Base URL)"}
                 </label>
                 <div className="relative">
                   <Input

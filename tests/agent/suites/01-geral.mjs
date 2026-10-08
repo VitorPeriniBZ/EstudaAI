@@ -7,8 +7,8 @@ const ok = (cond, name, extra="") => { if (cond) { pass++; console.log("  ✔", 
 
 function cookiesFrom(res) { return (res.headers.getSetCookie?.() ?? []).map(c => c.split(";")[0]); }
 
-async function login(code) {
-  const r1 = await fetch(B + "/api/auth/google?next=/app", { redirect: "manual" });
+async function login(code, next = "/app") {
+  const r1 = await fetch(B + "/api/auth/google?next=" + encodeURIComponent(next), { redirect: "manual" });
   const loc = new URL(r1.headers.get("location"));
   const oauthCookie = cookiesFrom(r1).join("; ");
   const state = loc.searchParams.get("state");
@@ -26,6 +26,7 @@ async function trpc(cookie, path, input, isQuery=false) {
 
 console.log("\n1. Saúde e SPA");
 ok((await (await fetch(B + "/api/health")).json()).ok === true, "GET /api/health → ok");
+ok((await (await fetch(B + "/api/health/db")).json()).ok === true, "GET /api/health/db → ok (banco conectado)");
 const spa = await fetch(B + "/app/materia/1", { headers: { accept: "text/html" } });
 ok(spa.status === 200 && (await spa.text()).includes('<div id="root">'), "rota do React devolve index.html");
 
@@ -47,6 +48,12 @@ const bad = await fetch(`${B}/api/auth/google/callback?code=code-ana&state=forja
 ok(bad.headers.get("location") === "/login?erro=sessao_expirada", "state inválido é rejeitado");
 const denied = await fetch(`${B}/api/auth/google/callback?error=access_denied`, { redirect: "manual" });
 ok(denied.headers.get("location") === "/login?erro=cancelado", "cancelamento volta ao login com aviso");
+// open redirect: o navegador lê "/\site" como "//site"; o destino final tem que ser /app
+for (const next of ["/\\exemplo.invalid", "//exemplo.invalid", "/\t/exemplo.invalid", "https://exemplo.invalid"]) {
+  const r = await login("code-ana", next);
+  ok(r.r2.status === 302 && r.r2.headers.get("location") === "/app", `?next=${JSON.stringify(next)} → /app`, r.r2.headers.get("location"));
+}
+ok((await login("code-ana", "/app/materia/7")).r2.headers.get("location") === "/app/materia/7", "?next interno é mantido");
 const forged = await trpc("estudaai_sid=eyJhbGciOiJIUzI1NiJ9.eyJ1aWQiOjF9.xxx", "auth.me", undefined, true);
 ok(forged.data === null, "JWT forjado não autentica");
 
@@ -109,6 +116,11 @@ ok(chat.data?.answer.includes("prurido"), "chat de dúvidas");
 ok((await trpc(A, "study.chatHistory", { subjectId: sid }, true)).data?.length === 2, "histórico do chat");
 const sl = await trpc(A, "subjects.list", undefined, true);
 ok(sl.data?.[0].counts.questions === 6 && sl.data[0].counts.flashcards === 5, "contagens da matéria");
+ok(sl.data?.[0].counts.materials === 3 && sl.data[0].counts.materialsReady === 2 && sl.data[0].counts.quizzes === 1, "contagens de materiais (prontos) e quizzes", JSON.stringify(sl.data?.[0].counts));
+ok(sl.data?.[0] && !("summary" in sl.data[0]) && !!sl.data[0].summaryAt, "a listagem não traz o resumo (só a data)");
+const sg = await trpc(A, "subjects.get", { id: sid }, true);
+ok(sg.data?.summary?.includes("Ascaris"), "subjects.get traz o resumo da matéria", JSON.stringify(sg.error));
+ok((await trpc(Bc, "subjects.get", { id: sid }, true)).error?.data?.code === "NOT_FOUND", "subjects.get de matéria de outro usuário → NOT_FOUND");
 
 // toggle não pode resetar prioridade/visão (bug corrigido)
 await trpc(A, "admin.updateProvider", { id: p1.data.id, enabled: false });
@@ -118,7 +130,40 @@ await trpc(A, "admin.updateProvider", { id: p2.data.id, vision: true });
 const re = await trpc(A, "materials.reprocess", { id: img1.data.id });
 ok(re.data?.status === "ready" && re.data.textContent.includes("Ascaris"), "reprocessar imagem com IA de visão", JSON.stringify(re.error ?? re.data?.statusMsg));
 
-console.log("\n6. Exclusões e logout");
+// trocar o destino exige a chave de novo (senão a chave salva iria para um servidor qualquer ao clicar em "Testar")
+const p3 = await trpc(A, "admin.createProvider", { name: "Destino", type: "openai", apiKey: "sk-destino-123456", baseUrl: "http://localhost:4002/ok/v1", model: "m3", priority: 50, enabled: false });
+const semChave = await trpc(A, "admin.updateProvider", { id: p3.data.id, baseUrl: "http://localhost:4002/fail/v1" });
+ok(semChave.error?.data?.code === "BAD_REQUEST" && /API key/.test(semChave.error.message), "trocar a Base URL sem a chave é recusado", JSON.stringify(semChave.error?.message));
+const tipoSemChave = await trpc(A, "admin.updateProvider", { id: p3.data.id, type: "anthropic", baseUrl: "" });
+ok(tipoSemChave.error?.data?.code === "BAD_REQUEST", "trocar o tipo sem a chave é recusado");
+const p3Depois = (await trpc(A, "admin.listProviders", undefined, true)).data.find(p => p.id === p3.data.id);
+ok(p3Depois.baseUrl === "http://localhost:4002/ok/v1" && p3Depois.type === "openai", "o provedor continua com o destino original", JSON.stringify(p3Depois));
+const comoPainel = await trpc(A, "admin.updateProvider", { id: p3.data.id, name: "Destino 2", type: "openai", apiKey: "", baseUrl: "http://localhost:4002/ok/v1", model: "m3", vision: false, priority: 50, enabled: false });
+ok(comoPainel.data?.ok === true, "editar só o nome (o painel reenvia a mesma Base URL) não pede a chave", JSON.stringify(comoPainel.error?.message));
+const comChave = await trpc(A, "admin.updateProvider", { id: p3.data.id, baseUrl: "http://localhost:4002/fail/v1", apiKey: "sk-nova-123456789" });
+ok(comChave.data?.ok === true, "trocar a Base URL informando a chave funciona", JSON.stringify(comChave.error?.message));
+await trpc(A, "admin.deleteProvider", { id: p3.data.id });
+
+console.log("\n6. Cabeçalhos de segurança e CSRF");
+for (const p of ["/", "/api/health", "/api/nao-existe"]) {
+  const h = (await fetch(B + p)).headers;
+  ok(/max-age=\d+/.test(h.get("strict-transport-security") ?? "") && h.get("x-frame-options") === "DENY" &&
+     h.get("x-content-type-options") === "nosniff" && h.get("referrer-policy") === "strict-origin-when-cross-origin",
+     `HSTS, X-Frame-Options, nosniff e Referrer-Policy em ${p}`, JSON.stringify(Object.fromEntries(h)));
+  const csp = h.get("content-security-policy-report-only") ?? "";
+  ok(/default-src 'self'/.test(csp) && /frame-ancestors 'none'/.test(csp) && /img-src [^;]*lh3\.googleusercontent\.com/.test(csp), `CSP (report-only) em ${p}`, csp);
+}
+const maliciosa = "https://site-malicioso.example";
+const matériasAntes = (await trpc(Bc, "subjects.list", undefined, true)).data.length;
+const forjado = await fetch(B + "/api/trpc/subjects.create", { method: "POST", headers: { cookie: Bc, "content-type": "text/plain", origin: maliciosa }, body: JSON.stringify({ json: { name: "CSRF" } }) });
+ok(forjado.status === 403, "POST text/plain vindo de outro site → 403 (CSRF)", String(forjado.status));
+const form = new FormData(); form.set("name", "CSRF");
+const multipart = await fetch(B + "/api/trpc/subjects.create", { method: "POST", headers: { cookie: Bc, origin: maliciosa }, body: form });
+ok(multipart.status === 403, "POST multipart vindo de outro site → 403 (CSRF)", String(multipart.status));
+ok((await trpc(Bc, "subjects.list", undefined, true)).data.length === matériasAntes, "nenhuma matéria criada pelos POSTs forjados");
+ok((await trpc(Bc, "subjects.create", { name: "Legítima" })).data?.id > 0, "POST JSON do próprio app continua funcionando");
+
+console.log("\n7. Exclusões e logout");
 ok((await trpc(A, "materials.remove", { id: up.data.id })).data?.ok, "excluir material");
 ok((await fetch(B + fu.data.url, { headers: { cookie: A } })).status === 404, "arquivo apagado junto");
 ok((await trpc(A, "subjects.remove", { id: sid })).data?.ok, "excluir matéria (transação)");

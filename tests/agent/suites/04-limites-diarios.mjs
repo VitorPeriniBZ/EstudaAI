@@ -40,12 +40,43 @@ const ch=await Promise.all(Array.from({length:4},()=>t(A,"admin.listUsers",null,
 const bia=ch[0].data.find(x=>x.email==="bia@example.com");
 ok(bia.generationsThisMonth===3 && bia.chatToday===5, "painel admin separa gerações e perguntas", JSON.stringify(bia));
 
+console.log("\nLeitura de imagem com IA — limite diário (Gratuito: 10)");
+const png=fs.readFileSync(path.join(FIX,"foto.png")).toString("base64");
+const up=()=>t(U,"materials.uploadFile",{subjectId:s,name:"foto.png",contentBase64:png,contentType:"image/png"});
+const semVisao=await up();
+ok(semVisao.data?.status==="error", "sem IA de visão a leitura falha", JSON.stringify(semVisao.data?.statusMsg ?? semVisao.error?.message));
+u=await usage(); ok(u.usage.extractsToday===0, "leitura que falhou não consome a vaga", JSON.stringify(u.usage));
+await t(U,"materials.remove",{id:semVisao.data.id});
+await t(A,"admin.createProvider",{name:"Visão",type:"openai",apiKey:"sk-ok-1234567",baseUrl:"http://localhost:4002/ok/v1",model:"m",priority:2,vision:true});
+const lida=await up();
+ok(lida.data?.status==="ready", "imagem lida com IA de visão", JSON.stringify(lida.data?.statusMsg ?? lida.error?.message));
+const rep=await t(U,"materials.reprocess",{id:lida.data.id});
+ok(rep.error?.data?.code==="BAD_REQUEST", "reprocessar material pronto é recusado (seria outra chamada paga)", JSON.stringify(rep.data?.status));
+u=await usage(); ok(u.usage.extractsToday===1, "a leitura contou 1 vez", JSON.stringify(u.usage));
+await t(U,"materials.remove",{id:lida.data.id});
+for (let i=1;i<10;i++){ const r=await up(); if (r.data?.id) await t(U,"materials.remove",{id:r.data.id}); }
+u=await usage(); ok(u.usage.extractsToday===10 && u.usage.files===0, "excluir e reenviar conta cada leitura (10 no dia)", JSON.stringify(u.usage));
+const onze=await up();
+console.log("   11ª imagem:", onze.error?.message);
+ok(onze.error?.data?.code==="FORBIDDEN" && /10 imagens por dia/.test(onze.error.message), "11ª imagem do dia bloqueada");
+u=await usage(); ok(u.usage.files===0 && u.usage.generations===3, "bloqueada antes de guardar o arquivo; leituras não contam nas gerações", JSON.stringify(u.usage));
+
 console.log("\nPRO");
 await t(A,"admin.updateUser",{id:bia.id,plan:"pro"});
+u=await usage();
+ok(u.plan==="pro" && u.limits.maxGenerationsPerMonth===300 && u.limits.maxChatPerDay===100 && u.limits.maxExtractsPerDay===100,
+  "PRO com limites de uso justo: 300 gerações/mês, 100 perguntas e 100 imagens por dia", JSON.stringify(u.limits));
 ok((await t(U,"study.generateFlashcards",{subjectId:s,count:40})).data?.count===40, "40 flashcards no PRO");
 const fc45=await t(U,"study.generateFlashcards",{subjectId:s,count:45});
 ok(fc45.error?.data?.code==="BAD_REQUEST", "acima de 40 recusado também no PRO (validação)");
 ok((await t(U,"study.generateSummary",{subjectId:s})).data, "3º resumo do dia liberado no PRO");
 let proChat=0; for (let i=0;i<3;i++) if ((await t(U,"study.chatSend",{subjectId:s,message:"pro "+i})).data) proChat++;
-ok(proChat===3, "perguntas ilimitadas no PRO (8 no dia)");
+ok(proChat===3, "PRO libera mais perguntas que o Gratuito (8 no dia)");
+// teto de uso justo: completa as 100 perguntas do dia e tenta a 101ª
+u=await usage(); const falta=u.limits.maxChatPerDay-u.usage.chatToday;
+for (let i=0;i<falta;i+=10) await Promise.all(Array.from({length:Math.min(10,falta-i)},(_,k)=>t(U,"study.chatSend",{subjectId:s,message:"justo "+(i+k)})));
+const c101=await t(U,"study.chatSend",{subjectId:s,message:"101ª"});
+console.log("   101ª pergunta no PRO:", c101.error?.message);
+ok(c101.error?.data?.code==="FORBIDDEN" && /uso justo/.test(c101.error.message) && /100 perguntas/.test(c101.error.message), "101ª pergunta do dia bloqueada no PRO (uso justo)");
+u=await usage(); ok(u.usage.chatToday===100, "o PRO para em 100 perguntas no dia", JSON.stringify(u.usage));
 console.log(`\n${pass} ok, ${fail} falhas`); process.exit(fail?1:0);

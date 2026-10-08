@@ -59,9 +59,15 @@ function redirectUri(c: Context): string {
   return `${publicOrigin(c)}${Paths.googleCallback}`;
 }
 
-/** Só aceita caminhos internos em ?next= (evita open redirect). */
-function safeNext(next: string | undefined): string {
-  if (!next || !next.startsWith("/") || next.startsWith("//")) return "/app";
+/**
+ * Só aceita caminhos internos em ?next= (evita open redirect).
+ * Barra invertida e caracteres de controle também são recusados: o navegador
+ * lê "/\site.com" como "//site.com" e descarta tab/quebra de linha.
+ */
+export function safeNext(next?: string): string {
+  if (!next || !next.startsWith("/") || next.startsWith("//") ||
+      // eslint-disable-next-line no-control-regex -- caracteres de controle são recusados de propósito
+      /[\\\u0000-\u001f]/.test(next)) return "/app";
   return next;
 }
 

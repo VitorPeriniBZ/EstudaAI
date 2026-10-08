@@ -1,0 +1,9 @@
+{
+  // Usado pelo tsx nos testes de unidade (tests/agent/run.mjs): mesmos aliases da raiz e
+  // JSX automático, para renderizar componentes React (ex.: Markdown) sem importar React.
+  "extends": "../../tsconfig.json",
+  "compilerOptions": {
+    "jsx": "react-jsx"
+  },
+  "include": ["../../src", "../../api", "../../contracts", "../../db", "./**/*"]
+}

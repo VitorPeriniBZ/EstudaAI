@@ -16,6 +16,7 @@ import { aiProviders, type AiProvider } from "../../db/schema";
 import { AiBadOutput, AiRejected, AiTooLarge, classifyAiError } from "./errors";
 import { env } from "../lib/env";
 import { recordAiEvent } from "./diagnostics";
+import { literalBaseUrlProblem } from "./base-url";
 import { dualError, UserMessages } from "../lib/user-errors";
 
 interface Candidate {
@@ -27,6 +28,8 @@ interface Candidate {
 function modelForProvider(p: AiProvider): LanguageModel {
   if (!p.apiKey) throw new Error(`Provedor "${p.name}" sem API key`);
   if (!p.model?.trim()) throw new Error(`Provedor "${p.name}" sem modelo`);
+  const baseUrlProblem = literalBaseUrlProblem(p.baseUrl);
+  if (baseUrlProblem) throw new Error(`Provedor "${p.name}": ${baseUrlProblem}`);
   if (p.type === "google") {
     // aceita "gemini-2.5-flash" ou "models/gemini-2.5-flash"
     const model = p.model.trim().replace(/^models\//, "");

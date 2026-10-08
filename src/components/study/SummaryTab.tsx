@@ -8,8 +8,7 @@ import { toast } from "sonner";
 
 export default function SummaryTab({ subjectId }: { subjectId: number }) {
   const utils = trpc.useUtils();
-  const { data: subjects, isLoading } = trpc.subjects.list.useQuery();
-  const subject = subjects?.find((s) => s.id === subjectId);
+  const { data: subject, isLoading } = trpc.subjects.get.useQuery({ id: subjectId });
 
   const plan = usePlan();
   const summariesLeft =
@@ -19,7 +18,7 @@ export default function SummaryTab({ subjectId }: { subjectId: number }) {
   const generate = trpc.study.generateSummary.useMutation({
     onSuccess: () => {
       toast.success("Resumo gerado");
-      utils.subjects.list.invalidate();
+      utils.subjects.get.invalidate({ id: subjectId });
     },
     onError: (e) => toast.error(e.message),
   });

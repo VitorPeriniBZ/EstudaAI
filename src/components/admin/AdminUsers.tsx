@@ -164,7 +164,7 @@ export default function AdminUsers() {
         </ul>
       )}
       <p className="mt-4 text-xs text-muted-foreground">
-        Admins têm acesso completo, sem limites de plano. Você não pode remover o seu próprio acesso de admin.
+        Admins usam os limites do PRO (uso justo). Você não pode remover o seu próprio acesso de admin.
       </p>
     </div>
   );
