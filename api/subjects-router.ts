@@ -1,6 +1,6 @@
 import { z } from "zod";
 import { TRPCError } from "@trpc/server";
-import { and, desc, eq, inArray, isNotNull } from "drizzle-orm";
+import { and, desc, eq, inArray, isNotNull, sql } from "drizzle-orm";
 import { createRouter, authedQuery } from "./middleware";
 import { getDb } from "./queries/connection";
 import {
@@ -24,38 +24,62 @@ export async function requireSubject(subjectId: number, userId: number) {
 
 export const SUBJECT_COLORS = ["hema", "giemsa", "lugol", "madder", "neutral"] as const;
 
+/**
+ * count(*) dos registros de `table` ligados à matéria da linha atual (subconsulta correlacionada).
+ * Nomes qualificados à mão: o drizzle escreve as colunas sem a tabela dentro do select, e
+ * "subjectId" = "id" seria resolvido inteiro na tabela da subconsulta.
+ */
+function countBySubject(table: "materials" | "quizzes" | "questions" | "flashcards", onlyReady = false) {
+  const ready = onlyReady ? sql` and t."status" = 'ready'` : sql``;
+  return sql<number>`(select count(*)::int from ${sql.identifier(table)} t where t."subjectId" = ${subjects}."id"${ready})`.mapWith(Number);
+}
+
+/**
+ * Matérias do usuário com as contagens, numa consulta só.
+ * Antes eram 4 consultas por matéria trazendo linhas inteiras — inclusive o texto
+ * extraído de todos os materiais — só para contar.
+ */
+export function subjectsWithCounts(userId: number) {
+  return getDb()
+    .select({
+      // sem o resumo (markdown grande): a aba Resumo usa subjects.get
+      id: subjects.id,
+      userId: subjects.userId,
+      name: subjects.name,
+      description: subjects.description,
+      color: subjects.color,
+      summaryAt: subjects.summaryAt,
+      createdAt: subjects.createdAt,
+      nMaterials: countBySubject("materials"),
+      nMaterialsReady: countBySubject("materials", true),
+      nQuizzes: countBySubject("quizzes"),
+      nQuestions: countBySubject("questions"),
+      nFlashcards: countBySubject("flashcards"),
+    })
+    .from(subjects)
+    .where(eq(subjects.userId, userId))
+    .orderBy(desc(subjects.createdAt));
+}
+
 export const subjectsRouter = createRouter({
   list: authedQuery.query(async ({ ctx }) => {
-    const db = getDb();
-    const rows = await db.query.subjects.findMany({
-      where: eq(subjects.userId, ctx.user.id),
-      orderBy: desc(subjects.createdAt),
-    });
-    // contagens por matéria
-    const result = await Promise.all(
-      rows.map(async (s) => {
-        const [mats, qzs, cards] = await Promise.all([
-          db.query.materials.findMany({ where: eq(materials.subjectId, s.id) }),
-          db.query.quizzes.findMany({ where: eq(quizzes.subjectId, s.id) }),
-          db.query.flashcards.findMany({ where: eq(flashcards.subjectId, s.id) }),
-        ]);
-        const questionCount = (
-          await db.query.questions.findMany({ where: eq(questions.subjectId, s.id) })
-        ).length;
-        return {
-          ...s,
-          counts: {
-            materials: mats.length,
-            materialsReady: mats.filter((m) => m.status === "ready").length,
-            quizzes: qzs.length,
-            questions: questionCount,
-            flashcards: cards.length,
-          },
-        };
-      }),
-    );
-    return result;
+    const rows = await subjectsWithCounts(ctx.user.id);
+    return rows.map(({ nMaterials, nMaterialsReady, nQuizzes, nQuestions, nFlashcards, ...s }) => ({
+      ...s,
+      counts: {
+        materials: nMaterials,
+        materialsReady: nMaterialsReady,
+        quizzes: nQuizzes,
+        questions: nQuestions,
+        flashcards: nFlashcards,
+      },
+    }));
   }),
+
+  /** Uma matéria completa, com o resumo (aba Resumo). */
+  get: authedQuery
+    .input(z.object({ id: z.number() }))
+    .query(({ ctx, input }) => requireSubject(input.id, ctx.user.id)),
 
   create: authedQuery
     .input(

@@ -9,6 +9,7 @@ import { roleForNewUser } from "../../api/queries/users";
 import { checkProviderBaseUrl, isPrivateIp, literalBaseUrlProblem } from "../../api/ai/base-url";
 import { env } from "../../api/lib/env";
 import { checksFor } from "../../api/lib/plans";
+import { subjectsWithCounts } from "../../api/subjects-router";
 let pass = 0, fail = 0;
 const ok = (c: boolean, n: string, x = "") => { if (c) { pass++; console.log("  ✔", n); } else { fail++; console.log("  ✘", n, x); } };
 
@@ -137,4 +138,10 @@ ok(checksFor("free", "quiz").some((c) => c.max === 5 && /assine o PRO/.test(c.me
 const quizPro = checksFor("pro", "quiz");
 ok(quizPro.some((c) => c.max === 300 && /uso justo/.test(c.message)), "PRO: teto de 300 gerações por mês (uso justo)", resumo(quizPro));
 ok(checksFor("pro", "chat").some((c) => c.max === 100) && checksFor("pro", "extract").some((c) => c.max === 100), "PRO: 100 perguntas e 100 imagens por dia");
+console.log("\nListagem de matérias (painel)");
+const listagem = subjectsWithCounts(1).toSQL().sql;
+ok(!/"textContent"/.test(listagem), "não lê o texto extraído dos materiais", listagem);
+ok(!/"summary"/.test(listagem), "não lê o resumo (só a data dele)");
+ok((listagem.match(/count\(\*\)/g) ?? []).length === 5, "contagens em subconsultas, numa consulta só");
+ok((listagem.match(/t\."subjectId" = "subjects"\."id"/g) ?? []).length === 5, "cada contagem filtra pela matéria da linha (subconsulta correlacionada)", listagem);
 console.log(`\n${pass} ok, ${fail} falhas`); process.exit(fail ? 1 : 0);

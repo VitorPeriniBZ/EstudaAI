@@ -116,6 +116,11 @@ ok(chat.data?.answer.includes("prurido"), "chat de dúvidas");
 ok((await trpc(A, "study.chatHistory", { subjectId: sid }, true)).data?.length === 2, "histórico do chat");
 const sl = await trpc(A, "subjects.list", undefined, true);
 ok(sl.data?.[0].counts.questions === 6 && sl.data[0].counts.flashcards === 5, "contagens da matéria");
+ok(sl.data?.[0].counts.materials === 3 && sl.data[0].counts.materialsReady === 2 && sl.data[0].counts.quizzes === 1, "contagens de materiais (prontos) e quizzes", JSON.stringify(sl.data?.[0].counts));
+ok(sl.data?.[0] && !("summary" in sl.data[0]) && !!sl.data[0].summaryAt, "a listagem não traz o resumo (só a data)");
+const sg = await trpc(A, "subjects.get", { id: sid }, true);
+ok(sg.data?.summary?.includes("Ascaris"), "subjects.get traz o resumo da matéria", JSON.stringify(sg.error));
+ok((await trpc(Bc, "subjects.get", { id: sid }, true)).error?.data?.code === "NOT_FOUND", "subjects.get de matéria de outro usuário → NOT_FOUND");
 
 // toggle não pode resetar prioridade/visão (bug corrigido)
 await trpc(A, "admin.updateProvider", { id: p1.data.id, enabled: false });
