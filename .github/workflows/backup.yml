@@ -1,0 +1,83 @@
+# Backup semanal do banco (Neon) → dump criptografado com age → bucket no Cloudflare R2.
+# Também roda sob demanda (Actions → "Backup do banco" → Run workflow), antes de migrations
+# que mexem em dados. Configuração do bucket, das chaves e dos segredos: SETUP-BACKUP.md.
+name: Backup do banco
+
+on:
+  schedule:
+    - cron: "0 6 * * 0" # domingo, 03h no horário de Brasília
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: backup-do-banco
+  cancel-in-progress: false
+
+jobs:
+  backup:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      BACKUP_DATABASE_URL: ${{ secrets.BACKUP_DATABASE_URL }}
+      AGE_PUBLIC_KEY: ${{ secrets.AGE_PUBLIC_KEY }}
+      R2_BUCKET: ${{ secrets.R2_BUCKET }}
+      R2_ENDPOINT: ${{ secrets.R2_ENDPOINT }}
+      AWS_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+      AWS_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+      AWS_DEFAULT_REGION: auto
+      # o R2 não aceita os checksums que o AWS CLI v2 recente envia por padrão
+      AWS_REQUEST_CHECKSUM_CALCULATION: when_required
+      AWS_RESPONSE_CHECKSUM_VALIDATION: when_required
+    steps:
+      - name: Confere os segredos
+        run: |
+          faltando=0
+          for v in BACKUP_DATABASE_URL AGE_PUBLIC_KEY R2_BUCKET R2_ENDPOINT AWS_ACCESS_KEY_ID AWS_SECRET_ACCESS_KEY; do
+            if [ -z "${!v}" ]; then echo "::error::Segredo ausente: $v (veja SETUP-BACKUP.md)"; faltando=1; fi
+          done
+          exit $faltando
+
+      - name: Instala o cliente do Postgres na mesma versão do servidor
+        run: |
+          # repositório oficial do Postgres (PGDG): tem todas as versões do cliente
+          sudo install -d /usr/share/postgresql-common/pgdg
+          sudo curl -fsSL -o /usr/share/postgresql-common/pgdg/apt.postgresql.org.asc https://www.postgresql.org/media/keys/ACCC4CF8.asc
+          echo "deb [signed-by=/usr/share/postgresql-common/pgdg/apt.postgresql.org.asc] https://apt.postgresql.org/pub/repos/apt $(lsb_release -cs)-pgdg main" \
+            | sudo tee /etc/apt/sources.list.d/pgdg.list > /dev/null
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq postgresql-client age > /dev/null
+          # pg_dump precisa ser da mesma versão principal do servidor (o restore usa a mesma)
+          major=$(psql "$BACKUP_DATABASE_URL" -tAc "select current_setting('server_version_num')::int / 10000")
+          sudo apt-get install -y -qq "postgresql-client-$major" > /dev/null
+          echo "PGBIN=/usr/lib/postgresql/$major/bin" >> "$GITHUB_ENV"
+          echo "PG_MAJOR=$major" >> "$GITHUB_ENV"
+          echo "Servidor PostgreSQL $major"
+
+      - name: Gera o dump
+        run: |
+          arquivo="estudaai-$(date -u +%Y-%m-%d-%H%M).dump"
+          "$PGBIN/pg_dump" --format=custom --no-owner --no-acl --dbname="$BACKUP_DATABASE_URL" --file="$arquivo"
+          # confere que o arquivo é um dump legível antes de enviar
+          "$PGBIN/pg_restore" --list "$arquivo" > /dev/null
+          echo "ARQUIVO=$arquivo" >> "$GITHUB_ENV"
+          echo "Dump: $(du -h "$arquivo" | cut -f1)"
+
+      - name: Criptografa com age
+        run: |
+          # o dump tem material dos alunos e as chaves de API dos provedores: nunca sai sem criptografia
+          age --recipient "$AGE_PUBLIC_KEY" --output "$ARQUIVO.age" "$ARQUIVO"
+          shred -u "$ARQUIVO"
+
+      - name: Envia para o R2
+        run: |
+          destino="s3://$R2_BUCKET/postgres/$ARQUIVO.age"
+          aws s3 cp "$ARQUIVO.age" "$destino" --endpoint-url "$R2_ENDPOINT" --only-show-errors
+          aws s3 ls "$destino" --endpoint-url "$R2_ENDPOINT" > /dev/null
+          {
+            echo "### Backup do banco"
+            echo "- Arquivo: \`postgres/$ARQUIVO.age\`"
+            echo "- Tamanho criptografado: $(du -h "$ARQUIVO.age" | cut -f1)"
+            echo "- PostgreSQL $PG_MAJOR (use \`postgres:$PG_MAJOR\` no teste de restauração)"
+          } >> "$GITHUB_STEP_SUMMARY"
