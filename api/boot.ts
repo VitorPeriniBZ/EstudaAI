@@ -12,6 +12,7 @@ import { storage } from "./lib/storage";
 import { getDb } from "./queries/connection";
 import { runMigrations } from "./lib/migrate";
 import { seedProvidersFromEnv } from "./ai/providers";
+import { healthRoutes } from "./lib/health";
 import { Paths } from "@contracts/constants";
 
 const app = new Hono<{ Bindings: HttpBindings }>();
@@ -30,15 +31,8 @@ app.use("/api/*", bodyLimit({ maxSize: 25 * 1024 * 1024 }));
 app.get(Paths.googleStart, googleStartHandler());
 app.get(Paths.googleCallback, googleCallbackHandler());
 
-/* ---------- Saúde (health check do Render) ---------- */
-app.get("/api/health", async (c) => {
-  try {
-    await getDb().execute(sql`select 1`);
-    return c.json({ ok: true });
-  } catch {
-    return c.json({ ok: false, db: "indisponível" }, 503);
-  }
-});
+/* ---------- Saúde: /api/health (Render, UptimeRobot) não toca o banco; /api/health/db sim ---------- */
+app.route("/api/health", healthRoutes(() => getDb().execute(sql`select 1`)));
 
 /* ---------- Arquivos enviados (servidos do Postgres, só para o dono) ---------- */
 const INLINE_TYPES = new Set([

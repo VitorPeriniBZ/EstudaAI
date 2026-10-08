@@ -3,6 +3,7 @@ import { zodSchema } from "ai";
 import { quizSchema, flashcardsSchema, normalizeQuiz, topicTarget, extractJson } from "../../api/ai/generate";
 import { classifyAiError, AiBadOutput, AiRejected, AiTooLarge } from "../../api/ai/errors";
 import { normalizeMarkdown } from "../../src/lib/markdown";
+import { healthRoutes } from "../../api/lib/health";
 let pass = 0, fail = 0;
 const ok = (c: boolean, n: string, x = "") => { if (c) { pass++; console.log("  ✔", n); } else { fail++; console.log("  ✘", n, x); } };
 
@@ -59,4 +60,18 @@ ok(threw, "texto sem JSON é recusado");
 console.log("\nMarkdown");
 ok(normalizeMarkdown("| a | b<br>c |") === "| a | b · c |", "<br> dentro de tabela vira separador");
 ok(normalizeMarkdown("linha 1<br/>linha 2") === "linha 1  \nlinha 2", "<br> fora de tabela vira quebra de linha");
+
+console.log("\nHealth check");
+{
+  let consultas = 0;
+  const vivo = healthRoutes(async () => { consultas++; });
+  for (let i = 0; i < 5; i++) await vivo.request("/");
+  ok(consultas === 0, "/api/health não consulta o banco (o Neon pode pausar)", `${consultas} consultas`);
+  const r = await vivo.request("/db");
+  ok(r.status === 200 && consultas === 1, "/api/health/db consulta o banco");
+  const semBanco = healthRoutes(async () => { throw new Error("banco fora do ar"); });
+  ok((await semBanco.request("/")).status === 200, "/api/health responde mesmo com o banco fora do ar");
+  const rdb = await semBanco.request("/db");
+  ok(rdb.status === 503 && (await rdb.json()).ok === false, "/api/health/db responde 503 com o banco fora do ar");
+}
 console.log(`\n${pass} ok, ${fail} falhas`); process.exit(fail ? 1 : 0);

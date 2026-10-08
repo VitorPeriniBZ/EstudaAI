@@ -107,6 +107,12 @@ DATABASE_URL="postgres://...render.com/estudaai" npm run db:migrate
 Crie um monitor grátis (ex.: UptimeRobot) chamando `https://SEU-APP.onrender.com/api/health`
 a cada 10 minutos.
 
+Use **sempre `/api/health`**, que não consulta o banco. **Nunca** monitore `/api/health/db`
+com frequência. O Render também chama o health check a cada poucos segundos, e uma rota que
+tocasse o banco impediria o Neon de pausar. Com isso, as horas de compute do plano grátis
+acabariam no meio do mês e o banco ficaria suspenso. `/api/health/db` serve para conferir a
+conexão com o banco manualmente.
+
 ### IA grátis (Gemini)
 
 Em **Admin → Provedores de IA → Adicionar**: tipo *OpenAI-compatível*, Base URL
@@ -118,7 +124,7 @@ Use **Testar** e gere um quiz para confirmar.
 
 1. Copie a URL gerada (ex.: `https://estudaai.onrender.com`) e confirme que
    `https://estudaai.onrender.com/api/auth/google/callback` está nos URIs do Google.
-2. Abra `/api/health` → deve mostrar `{"ok":true}`.
+2. Abra `/api/health` e `/api/health/db`. As duas devem mostrar `{"ok":true}`; a segunda confirma a conexão com o banco.
 3. Entre com o Google (a primeira conta vira admin).
 4. Se não definiu `ANTHROPIC_API_KEY`, vá em **Admin → Provedores de IA** e cadastre uma chave.
 5. Teste: criar matéria → enviar PDF → gerar quiz → chat.

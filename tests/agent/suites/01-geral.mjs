@@ -26,6 +26,7 @@ async function trpc(cookie, path, input, isQuery=false) {
 
 console.log("\n1. Saúde e SPA");
 ok((await (await fetch(B + "/api/health")).json()).ok === true, "GET /api/health → ok");
+ok((await (await fetch(B + "/api/health/db")).json()).ok === true, "GET /api/health/db → ok (banco conectado)");
 const spa = await fetch(B + "/app/materia/1", { headers: { accept: "text/html" } });
 ok(spa.status === 200 && (await spa.text()).includes('<div id="root">'), "rota do React devolve index.html");
 
