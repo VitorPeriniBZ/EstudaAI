@@ -30,4 +30,14 @@ await t(A,"admin.updateProvider",{id:p.data.id, baseUrl:"http://localhost:4004/t
 await t(A,"admin.createProvider",{name:"Reserva",type:"openai",apiKey:"sk-ok-1234567",baseUrl:"http://localhost:4002/ok/v1",model:"m",priority:5});
 const q2 = await t(A,"study.generateQuiz",{subjectId:s,count:5});
 ok(q2.data?.count===5, "quiz gerado pela reserva (failover após 'too large')", JSON.stringify(q2.error?.message));
+
+console.log("\n429 de limite de taxa (mensagem real da Groq) → próxima IA, sem cortar o material");
+await t(A,"admin.updateProvider",{id:p.data.id, enabled:false});
+await t(A,"admin.createProvider",{name:"Groq sem cota no minuto",type:"openai",apiKey:"gsk_test",baseUrl:"http://localhost:4004/ratelimit/v1",model:"llama-3.3-70b-versatile",priority:1});
+const antes = (await stats()).length;
+const q3 = await t(A,"study.generateQuiz",{subjectId:s,count:5});
+const rl = (await stats()).slice(antes).filter(x=>x.path==="ratelimit");
+console.log("   tentativas no provedor com 429 (tokens):", rl.map(x=>x.tokens).join(" → "));
+ok(q3.data?.count===5, "quiz gerado pela reserva depois do 429", JSON.stringify(q3.error?.message));
+ok(rl.length>=1 && rl.every(x=>x.tokens===rl[0].tokens), "o material não foi reduzido por causa do 429", JSON.stringify(rl));
 console.log(`\n${pass} ok, ${fail} falhas`); process.exit(fail?1:0);

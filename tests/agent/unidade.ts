@@ -1,7 +1,7 @@
 // Testes de unidade (rodam com tsx): esquema estrito, quiz e Markdown
 import { zodSchema } from "ai";
 import { quizSchema, flashcardsSchema, normalizeQuiz, topicTarget, extractJson } from "../../api/ai/generate";
-import { classifyAiError, AiBadOutput, AiRejected, AiTooLarge } from "../../api/ai/errors";
+import { classifyAiError, AiBadOutput, AiRejected, AiTooLarge, AiTransient, AiUnavailable } from "../../api/ai/errors";
 import { normalizeMarkdown } from "../../src/lib/markdown";
 import { healthRoutes } from "../../api/lib/health";
 import { safeNext } from "../../api/auth/google";
@@ -51,6 +51,20 @@ ok(classifyAiError(mk(400, "Failed to generate JSON. Please adjust your prompt."
 ok(classifyAiError({ name: "AI_NoObjectGeneratedError", message: "x" }) instanceof AiBadOutput, "objeto fora do esquema → tentar de novo");
 ok(classifyAiError(mk(400, "rejected by content policy")) instanceof AiRejected, "400 genérico → recusa deste provedor (cadeia continua)");
 ok(classifyAiError(mk(413, "Request too large ... Limit 8000, Requested 17797")) instanceof AiTooLarge, "413 → reduzir material");
+
+// mensagens REAIS dos provedores (não simplificar: foi um mock "rate limited" que escondeu o bug do TPM)
+const GROQ_429 = "Rate limit reached for model `llama-3.3-70b-versatile` in organization `org_01jxyz` service tier `on_demand` on tokens per minute (TPM): Limit 6000, Used 5000, Requested 2000. Please try again in 10s. Need more tokens? Upgrade to Dev Tier today at https://console.groq.com/settings/billing";
+const OPENAI_429 = "Rate limit reached for gpt-4o-mini in organization org-abc123 on tokens per min (TPM): Limit 200000, Used 199000, Requested 2000. Please try again in 300ms. Visit https://platform.openai.com/account/rate-limits to learn more.";
+const OPENAI_429_GRANDE = "Request too large for gpt-4o in organization org-abc123 on tokens per min (TPM): Limit 30000, Requested 50000. The input or output tokens must be reduced in order to run successfully. Visit https://platform.openai.com/account/rate-limits to learn more.";
+const GEMINI_429_SEM_COTA = "You exceeded your current quota, please check your plan and billing details. Quota exceeded for metric: generativelanguage.googleapis.com/generate_content_free_tier_requests, limit: 0, model: gemini-2.5-pro";
+const groq = classifyAiError(mk(429, GROQ_429));
+ok(!(groq instanceof AiTooLarge) && groq instanceof AiTransient, "429 de TPM da Groq (mensagem real) NÃO é pedido grande → próxima IA", groq.name);
+const groqRetry = classifyAiError({ name: "AI_RetryError", message: "Failed after 2 attempts", lastError: mk(429, GROQ_429) });
+ok(!(groqRetry instanceof AiTooLarge) && groqRetry instanceof AiTransient, "429 da Groq depois das retentativas do AI SDK também", groqRetry.name);
+const openai = classifyAiError(mk(429, OPENAI_429));
+ok(!(openai instanceof AiTooLarge) && openai instanceof AiTransient, "429 de TPM da OpenAI (mensagem real) NÃO é pedido grande", openai.name);
+ok(classifyAiError(mk(429, OPENAI_429_GRANDE)) instanceof AiTooLarge, "429 'Request too large' (pedido sozinho passa do TPM) → reduzir material");
+ok(classifyAiError(mk(429, GEMINI_429_SEM_COTA)) instanceof AiUnavailable, "429 do Gemini sem cota gratuita (limit: 0) → provedor indisponível");
 
 console.log("\nPlano B: JSON em texto");
 ok((extractJson("Claro!\n```json\n{\"a\":1}\n```") as any).a === 1, "extrai JSON entre crases");

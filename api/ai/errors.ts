@@ -97,6 +97,24 @@ export function classifyAiError(err: unknown): Error {
 
   const status = e.statusCode ?? e.status;
   const detail = extractDetail(e).slice(0, 400);
+  const limit = Number((detail.match(/limit[:\s]+(\d+)/i) || [])[1]) || null;
+  const requested = Number((detail.match(/requested[:\s]+(\d+)/i) || [])[1]) || null;
+
+  // 429 = limite de TAXA (cota do minuto já usada). Vem antes do teste de "pedido grande"
+  // porque a mensagem da Groq/OpenAI também cita "tokens per minute (TPM)": tratado como
+  // pedido grande, o material era cortado para 50% e 25% em vez de passar para a próxima IA.
+  if (status === 429) {
+    // "limit: 0" = o modelo não tem cota no plano gratuito
+    if (/limit:\s*0\b|free_tier/i.test(detail)) {
+      return new AiUnavailable(`Sem cota gratuita para este modelo (429): ${detail}`);
+    }
+    // exceção: o PRÓPRIO pedido passa do limite por minuto (OpenAI: 429 "Request too large …
+    // Limit 30000, Requested 50000") — aí reduzir o material resolve
+    if (/request too large/i.test(detail) || (limit !== null && requested !== null && requested > limit)) {
+      return new AiTooLarge(`Pedido grande demais para este provedor: ${detail}`, limit, requested);
+    }
+    return new AiTransient(`Limite de requisições atingido (429)${detail ? `: ${detail}` : ""}`);
+  }
 
   // pedido grande demais (Groq: 413 "Request too large … tokens per minute";
   // OpenAI/Anthropic: "context length", "prompt is too long")
@@ -104,8 +122,6 @@ export function classifyAiError(err: unknown): Error {
     status === 413 ||
     /request too large|tokens per minute|\bTPM\b|context[ _-]?length|maximum context|prompt is too long|too many tokens|reduce (your|the) (message|prompt)/i.test(detail)
   ) {
-    const limit = Number((detail.match(/limit[:\s]+(\d+)/i) || [])[1]) || null;
-    const requested = Number((detail.match(/requested[:\s]+(\d+)/i) || [])[1]) || null;
     return new AiTooLarge(`Pedido grande demais para este provedor: ${detail}`, limit, requested);
   }
 
@@ -117,13 +133,6 @@ export function classifyAiError(err: unknown): Error {
     }
     if (status === 402) return new AiUnavailable("Sem créditos no provedor");
     if (status === 404) return new AiUnavailable(`Modelo não encontrado: ${detail}`);
-    if (status === 429) {
-      // "limit: 0" = o modelo não tem cota no plano gratuito
-      if (/limit:\s*0\b|free_tier/i.test(detail)) {
-        return new AiUnavailable(`Sem cota gratuita para este modelo (429): ${detail}`);
-      }
-      return new AiTransient(`Limite de requisições atingido (429)${detail ? `: ${detail}` : ""}`);
-    }
     if (status === 408 || status >= 500) {
       return new AiTransient(`Serviço instável (${status})${detail ? `: ${detail}` : ""}`);
     }
